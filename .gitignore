@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+*.o
+*.dSYM
+*.app
+*.icns.tmp
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# User / IDE settings
+.vscode/
+.idea/
+*.xcuserstate
+xcuserdata/
