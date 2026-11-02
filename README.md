@@ -29,6 +29,15 @@
 
 ---
 
+## 📥 Download & Instalasi Cepat
+
+Unduh rilis terbaru langsung dari [GitHub Releases](https://github.com/exa31/winmix/releases/latest):
+
+- 📀 **[WinMix-v1.0.0.dmg](https://github.com/exa31/winmix/releases/download/v1.0.0/WinMix-v1.0.0.dmg)** (Rekomendasi): Buka file `.dmg`, lalu tarik icon **WinMix** ke folder **Applications**.
+- 🗜️ **[WinMix-v1.0.0.zip](https://github.com/exa31/winmix/releases/download/v1.0.0/WinMix-v1.0.0.zip)** (Portable): Ekstrak file `.zip` dan letakkan `WinMix.app` di `/Applications`.
+
+---
+
 ## 📋 Persyaratan Sistem
 
 - **Sistem Operasi**: macOS 14.4 (Sonoma) atau lebih baru (termasuk macOS 15+ Sequoia / macOS 27).
