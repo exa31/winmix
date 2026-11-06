@@ -60,31 +60,31 @@ struct WindowsMixerView: View {
 
             Spacer()
 
-            // Anti-Ducking (Bypass Call Ducking) Button
+            // Call Audio Behavior Button (Bypass Ducking vs Normal macOS Ducking)
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     model.toggleAntiDucking()
                 }
             }) {
-                HStack(spacing: 4) {
-                    Image(systemName: model.isAntiDuckingEnabled ? "shield.fill" : "shield.slash")
+                HStack(spacing: 5) {
+                    Image(systemName: model.isAntiDuckingEnabled ? "shield.fill" : "speaker.wave.1")
                         .font(.system(size: 10))
                         .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
-                    Text("Anti-Duck")
-                        .font(.system(size: 11, weight: .medium))
-                    Text(model.isAntiDuckingEnabled ? "ON" : "OFF")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
+                    Text(model.isAntiDuckingEnabled ? "Musik: Tetap 100%" : "Musik: Mengecil (Mac)")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(model.isAntiDuckingEnabled ? .primary : .secondary)
                 }
                 .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.vertical, 3.5)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(model.isAntiDuckingEnabled ? Color.green.opacity(0.12) : Color.primary.opacity(0.06))
                 )
             }
             .buttonStyle(.plain)
-            .help("Bypass Ducking: Mencegah WhatsApp / Zoom mengecilkan volume aplikasi lain saat telepon")
+            .help(model.isAntiDuckingEnabled
+                ? "Saat Telepon: Volume musik/video TETAP 100% kencang (Bypass Ducking Aktif)"
+                : "Saat Telepon: Volume musik/video OTOMATIS mengecil (Standar Bawaan Mac)")
 
             // Theme Switcher Button
             Button(action: {

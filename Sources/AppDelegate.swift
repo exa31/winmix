@@ -78,7 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         menu.addItem(NSMenuItem.separator())
 
         let antiDuckItem = NSMenuItem(
-            title: model.isAntiDuckingEnabled ? "✓ 🛡️ Anti-Ducking (Aktif)" : "🛡️ Anti-Ducking (Nonaktif)",
+            title: model.isAntiDuckingEnabled
+                ? "✓ 🛡️ Musik Tetap 100% Saat Call (Bypass Ducking)"
+                : "🔉 Musik Mengecil Saat Call (Standar Mac)",
             action: #selector(toggleAntiDuckAction),
             keyEquivalent: "d"
         )

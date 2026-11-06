@@ -13,7 +13,9 @@ struct WinMixApp: App {
                 Button(action: {
                     appDelegate.model?.toggleAntiDucking()
                 }) {
-                    Text(appDelegate.model?.isAntiDuckingEnabled == true ? "✓ 🛡️ Anti-Ducking (Aktif)" : "🛡️ Anti-Ducking (Nonaktif)")
+                    Text(appDelegate.model?.isAntiDuckingEnabled == true
+                        ? "✓ 🛡️ Musik Tetap 100% Saat Call (Bypass Ducking)"
+                        : "🔉 Musik Mengecil Saat Call (Standar Mac)")
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             }

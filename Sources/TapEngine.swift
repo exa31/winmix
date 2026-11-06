@@ -55,7 +55,6 @@ final class TapEngine {
     private var activityToken: NSObjectProtocol?
     private var outputListener: ListenerToken?
     private var pollTimer: DispatchSourceTimer?
-    private var unduckTimer: DispatchSourceTimer?
 
     private let hysteresis: TimeInterval = 30.0
 
@@ -111,12 +110,6 @@ final class TapEngine {
         t.setEventHandler { [weak self] in self?._refresh() }
         t.resume()
         pollTimer = t
-
-        let ut = DispatchSource.makeTimerSource(queue: engineQueue)
-        ut.schedule(deadline: .now() + 0.1, repeating: 0.15)
-        ut.setEventHandler { [weak self] in self?._applyUnduck() }
-        ut.resume()
-        unduckTimer = ut
 
         _updateRealOutput()
         _refresh()
@@ -186,27 +179,13 @@ final class TapEngine {
             guard let self = self else { return }
             self.isAntiDuckingEnabled = enabled
             Persistence.isAntiDuckingEnabled = enabled
-            let devices = self._allOutputDeviceIDs()
             if enabled {
                 self._applyUnduck()
-            } else {
-                for dev in devices {
-                    _ = Self.audioDeviceDuck?(dev, 0.25, nil, 0.1)
-                }
             }
         }
     }
 
     // MARK: - Anti-Ducking (Bypass call attenuation)
-
-    private typealias DuckFn = @convention(c)
-        (AudioObjectID, Float32, UnsafePointer<AudioTimeStamp>?, Float32) -> OSStatus
-
-    private static let audioDeviceDuck: DuckFn? = {
-        guard let handle = dlopen(nil, RTLD_NOW),
-              let sym = dlsym(handle, "AudioDeviceDuck") else { return nil }
-        return unsafeBitCast(sym, to: DuckFn.self)
-    }()
 
     private func _allOutputDeviceIDs() -> [AudioObjectID] {
         var devices = Set<AudioObjectID>()
@@ -231,10 +210,6 @@ final class TapEngine {
         )
 
         for dev in devices {
-            // 1. CoreAudio daemon internal duck level reset to 1.0 (unity gain)
-            _ = Self.audioDeviceDuck?(dev, 1.0, nil, 0.0)
-
-            // 2. Hardware / HAL property reset
             for scope in [kAudioDevicePropertyScopeOutput, kAudioObjectPropertyScopeGlobal] {
                 var address = AudioObjectPropertyAddress(
                     mSelector: duckSelector,
@@ -505,7 +480,6 @@ final class TapEngine {
     }
 
     private func _teardownAll() {
-        unduckTimer?.cancel(); unduckTimer = nil
         pollTimer?.cancel(); pollTimer = nil
         if let l = outputListener { HAL.removeListener(l); outputListener = nil }
         _teardownIO()
