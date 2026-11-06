@@ -139,14 +139,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let view = WindowsMixerView(model: model, isStandaloneWindow: true)
         let hostingController = NSHostingController(rootView: view)
 
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame WinMixMainWindow")
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 350),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.center()
-        window.setFrameAutosaveName("WinMixMainWindow")
+        window.contentMinSize = NSSize(width: 440, height: 310)
         window.title = "WinMix - Volume Mixer"
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false
