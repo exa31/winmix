@@ -179,13 +179,34 @@ final class TapEngine {
             guard let self = self else { return }
             self.isAntiDuckingEnabled = enabled
             Persistence.isAntiDuckingEnabled = enabled
+            let devices = self._allOutputDeviceIDs()
+
             if enabled {
+                // Smooth fade UP to full volume in 250ms
+                for dev in devices {
+                    _ = Self.audioDeviceDuck?(dev, 1.0, nil, 0.25)
+                }
                 self._applyUnduck()
+            } else {
+                // Smooth fade DOWN back to ducked volume (25%) in 350ms
+                for dev in devices {
+                    _ = Self.audioDeviceDuck?(dev, 0.25, nil, 0.35)
+                }
+                self._writeDuckProperty([0.0, 0.0, 0.0, 0.0], devices: devices)
             }
         }
     }
 
     // MARK: - Anti-Ducking (Bypass call attenuation)
+
+    private typealias DuckFn = @convention(c)
+        (AudioObjectID, Float32, UnsafePointer<AudioTimeStamp>?, Float32) -> OSStatus
+
+    private static let audioDeviceDuck: DuckFn? = {
+        guard let handle = dlopen(nil, RTLD_NOW),
+              let sym = dlsym(handle, "AudioDeviceDuck") else { return nil }
+        return unsafeBitCast(sym, to: DuckFn.self)
+    }()
 
     private func _allOutputDeviceIDs() -> [AudioObjectID] {
         var devices = Set<AudioObjectID>()
@@ -198,16 +219,15 @@ final class TapEngine {
         return Array(devices)
     }
 
-    private func _applyUnduck() {
-        guard isAntiDuckingEnabled else { return }
-        let devices = _allOutputDeviceIDs()
-
+    private func _writeDuckProperty(_ values: [Float32], devices: [AudioObjectID]) {
         let duckSelector = AudioObjectPropertySelector(
             (UInt32(UInt8(ascii: "d")) << 24) |
             (UInt32(UInt8(ascii: "u")) << 16) |
             (UInt32(UInt8(ascii: "c")) << 8)  |
              UInt32(UInt8(ascii: "k"))
         )
+        var vals = values
+        let size = UInt32(MemoryLayout<Float32>.stride * vals.count)
 
         for dev in devices {
             for scope in [kAudioDevicePropertyScopeOutput, kAudioObjectPropertyScopeGlobal] {
@@ -219,11 +239,15 @@ final class TapEngine {
                 guard AudioObjectHasProperty(dev, &address) else { continue }
                 var settable: DarwinBoolean = false
                 guard AudioObjectIsPropertySettable(dev, &address, &settable) == noErr, settable.boolValue else { continue }
-                var values: [Float32] = [1.0, 0.0, 0.0, 0.0]
-                let size = UInt32(MemoryLayout<Float32>.stride * values.count)
-                _ = AudioObjectSetPropertyData(dev, &address, 0, nil, size, &values)
+                _ = AudioObjectSetPropertyData(dev, &address, 0, nil, size, &vals)
             }
         }
+    }
+
+    private func _applyUnduck() {
+        guard isAntiDuckingEnabled else { return }
+        let devices = _allOutputDeviceIDs()
+        _writeDuckProperty([1.0, 0.0, 0.0, 0.0], devices: devices)
     }
 
     // MARK: - App Scanning & Polling
