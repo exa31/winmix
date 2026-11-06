@@ -76,6 +76,17 @@ enum Persistence {
         set { d.set(newValue, forKey: "wvm.theme.classic") }
     }
 
+    /// Anti-ducking (bypasses automatic volume attenuation during WhatsApp/VoIP calls)
+    static var isAntiDuckingEnabled: Bool {
+        get {
+            if let val = d.object(forKey: "wvm.antiduck.enabled") as? Bool {
+                return val
+            }
+            return true // Default: Anti-ducking enabled
+        }
+        set { d.set(newValue, forKey: "wvm.antiduck.enabled") }
+    }
+
     /// Exclude our own bundle so we never tap ourselves
     static var excludedBundleIDs: Set<String> {
         var set: Set<String> = [

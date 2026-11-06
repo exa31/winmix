@@ -60,6 +60,32 @@ struct WindowsMixerView: View {
 
             Spacer()
 
+            // Anti-Ducking (Bypass Call Ducking) Button
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    model.toggleAntiDucking()
+                }
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: model.isAntiDuckingEnabled ? "shield.fill" : "shield.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
+                    Text("Anti-Duck")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(model.isAntiDuckingEnabled ? "ON" : "OFF")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(model.isAntiDuckingEnabled ? Color.green.opacity(0.12) : Color.primary.opacity(0.06))
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Bypass Ducking: Mencegah WhatsApp / Zoom mengecilkan volume aplikasi lain saat telepon")
+
             // Theme Switcher Button
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.15)) {

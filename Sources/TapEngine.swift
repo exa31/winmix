@@ -43,6 +43,7 @@ final class TapEngine {
     private var activeOutputUIDs: [String] = []
     private(set) var isAutoOutput: Bool = Persistence.isAutoOutputFollowing
     private(set) var manualOutputUID: String? = Persistence.manualOutputUID
+    private(set) var isAntiDuckingEnabled: Bool = Persistence.isAntiDuckingEnabled
 
     private var channels: [EngineChannel] = []
     private var tapsByProcess: [AudioObjectID: (tapID: AudioObjectID, uid: String)] = [:]
@@ -173,10 +174,62 @@ final class TapEngine {
         }
     }
 
+    func setAntiDuckingEnabled(_ enabled: Bool) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.isAntiDuckingEnabled = enabled
+            Persistence.isAntiDuckingEnabled = enabled
+            if enabled {
+                self._applyUnduck()
+            }
+        }
+    }
+
+    // MARK: - Anti-Ducking (Bypass call attenuation)
+
+    private func _applyUnduck() {
+        guard isAntiDuckingEnabled, realOutputDevice != 0 else { return }
+        var devices = [realOutputDevice]
+        if aggregateID != 0 {
+            devices.append(aggregateID)
+        }
+        for subUID in activeOutputUIDs {
+            if let dev = HAL.outputDevices().first(where: { HAL.deviceUID($0) == subUID }), !devices.contains(dev) {
+                devices.append(dev)
+            }
+        }
+
+        let duckSelector = AudioObjectPropertySelector(
+            (UInt32(UInt8(ascii: "d")) << 24) |
+            (UInt32(UInt8(ascii: "u")) << 16) |
+            (UInt32(UInt8(ascii: "c")) << 8)  |
+             UInt32(UInt8(ascii: "k"))
+        )
+
+        for dev in devices {
+            for scope in [kAudioDevicePropertyScopeOutput, kAudioObjectPropertyScopeGlobal] {
+                var address = AudioObjectPropertyAddress(
+                    mSelector: duckSelector,
+                    mScope: scope,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                guard AudioObjectHasProperty(dev, &address) else { continue }
+                var settable: DarwinBoolean = false
+                guard AudioObjectIsPropertySettable(dev, &address, &settable) == noErr, settable.boolValue else { continue }
+                var values: [Float32] = [1.0, 0.0, 0.0, 0.0]
+                let size = UInt32(MemoryLayout<Float32>.stride * values.count)
+                _ = AudioObjectSetPropertyData(dev, &address, 0, nil, size, &values)
+            }
+        }
+    }
+
     // MARK: - App Scanning & Polling
 
     private func _refresh() {
         guard running else { return }
+        if isAntiDuckingEnabled {
+            _applyUnduck()
+        }
         if !everCreatedTap, let retry = permissionRetryAt, Date() < retry { return }
         let now = Date()
         let excluded = Persistence.excludedBundleIDs

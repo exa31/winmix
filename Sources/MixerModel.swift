@@ -39,6 +39,12 @@ final class MixerModel: ObservableObject {
     @Published var isClassicTheme: Bool {
         didSet { Persistence.isWindowsClassicTheme = isClassicTheme }
     }
+    @Published var isAntiDuckingEnabled: Bool {
+        didSet {
+            Persistence.isAntiDuckingEnabled = isAntiDuckingEnabled
+            engine.setAntiDuckingEnabled(isAntiDuckingEnabled)
+        }
+    }
     @Published private(set) var hasAttempted: Bool
 
     let engine = TapEngine()
@@ -49,11 +55,16 @@ final class MixerModel: ObservableObject {
         masterGain = Persistence.masterGain
         masterMute = Persistence.masterMute
         isClassicTheme = Persistence.isWindowsClassicTheme
+        isAntiDuckingEnabled = Persistence.isAntiDuckingEnabled
         hasAttempted = UserDefaults.standard.bool(forKey: "wvm.hasAttempted")
 
         engine.onUpdate = { [weak self] snap in
             Task { @MainActor in self?.apply(snap) }
         }
+    }
+
+    func toggleAntiDucking() {
+        isAntiDuckingEnabled.toggle()
     }
 
     var needsPrimer: Bool {

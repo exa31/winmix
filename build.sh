@@ -97,8 +97,8 @@ rm -rf /Applications/WindowsVolumeMixer.app 2>/dev/null || true
 # Optional: Create DMG installer if --dmg flag is provided
 if [[ "$*" == *"--dmg"* ]]; then
     echo "==> 8. Creating DMG installer"
-    DMG="$BUILD_DIR/WinMix.dmg"
-    STAGING="$BUILD_DIR/dmg_staging"
+    DMG="$BUILD/WinMix.dmg"
+    STAGING="$BUILD/dmg_staging"
     rm -rf "$STAGING" "$DMG" 2>/dev/null || true
     mkdir -p "$STAGING"
     cp -R "$APP" "$STAGING/"

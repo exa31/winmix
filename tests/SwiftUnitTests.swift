@@ -66,6 +66,14 @@ struct SwiftUnitTests {
         assertTest(Persistence.isAutoOutputFollowing == false, "Manual output routing persists correctly (false)")
         Persistence.isAutoOutputFollowing = origAuto
 
+        // Anti-ducking preference
+        let origAntiDuck = Persistence.isAntiDuckingEnabled
+        Persistence.isAntiDuckingEnabled = true
+        assertTest(Persistence.isAntiDuckingEnabled == true, "Anti-ducking default is true")
+        Persistence.isAntiDuckingEnabled = false
+        assertTest(Persistence.isAntiDuckingEnabled == false, "Anti-ducking toggled to false correctly")
+        Persistence.isAntiDuckingEnabled = origAntiDuck
+
         // Excluded bundle IDs should contain self
         let excluded = Persistence.excludedBundleIDs
         assertTest(excluded.contains("com.antigravity.WindowsVolumeMixer"), "Excluded bundle IDs contains our mixer bundle ID")
