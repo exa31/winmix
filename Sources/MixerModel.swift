@@ -34,6 +34,16 @@ final class MixerModel: ObservableObject {
     @Published private(set) var state: EngineState = .idle
     @Published private(set) var outputName: String = "Speakers"
     @Published private(set) var isAutoOutput: Bool = Persistence.isAutoOutputFollowing
+    @Published private(set) var outputDevicesList: [OutputDevice] = []
+    @Published var isUIVisible: Bool = true {
+        didSet {
+            if isUIVisible {
+                startMeterTimer()
+            } else {
+                stopMeterTimer()
+            }
+        }
+    }
     @Published var masterGain: Float
     @Published var masterMute: Bool
     @Published var isClassicTheme: Bool {
@@ -50,6 +60,7 @@ final class MixerModel: ObservableObject {
     let engine = TapEngine()
     private var meterTimer: Timer?
     private var iconCache: [String: NSImage] = [:]
+    private var devicesListener: ListenerToken?
 
     init() {
         masterGain = Persistence.masterGain
@@ -57,6 +68,13 @@ final class MixerModel: ObservableObject {
         isClassicTheme = Persistence.isWindowsClassicTheme
         isAntiDuckingEnabled = Persistence.isAntiDuckingEnabled
         hasAttempted = UserDefaults.standard.bool(forKey: "wvm.hasAttempted")
+
+        refreshOutputDevices()
+        devicesListener = HAL.addListener(HAL.system, kAudioHardwarePropertyDevices, queue: .main) { [weak self] in
+            Task { @MainActor in
+                self?.refreshOutputDevices()
+            }
+        }
 
         engine.onUpdate = { [weak self] snap in
             Task { @MainActor in self?.apply(snap) }
@@ -78,7 +96,9 @@ final class MixerModel: ObservableObject {
         engine.setMasterGain(masterGain)
         engine.setMasterMute(masterMute)
         engine.start()
-        startMeterTimer()
+        if isUIVisible {
+            startMeterTimer()
+        }
     }
 
     private func apply(_ snap: EngineSnapshot) {
@@ -97,6 +117,7 @@ final class MixerModel: ObservableObject {
         channels = newChannels
         let ids = Set(newChannels.map { $0.id })
         levels = levels.filter { ids.contains($0.key) }
+        refreshOutputDevices()
     }
 
     // MARK: - Live Volume & Mute Controls
@@ -137,9 +158,19 @@ final class MixerModel: ObservableObject {
     // MARK: - Output Devices
 
     func outputDevices() -> [OutputDevice] {
-        HAL.outputDevices().compactMap { dev in
+        if outputDevicesList.isEmpty {
+            refreshOutputDevices()
+        }
+        return outputDevicesList
+    }
+
+    func refreshOutputDevices() {
+        let devs: [OutputDevice] = HAL.outputDevices().compactMap { (dev: AudioObjectID) -> OutputDevice? in
             guard let name = HAL.deviceName(dev), let uid = HAL.deviceUID(dev) else { return nil }
             return OutputDevice(id: dev, name: name, uid: uid)
+        }
+        if devs != outputDevicesList {
+            outputDevicesList = devs
         }
     }
 
@@ -155,13 +186,20 @@ final class MixerModel: ObservableObject {
 
     // MARK: - Real-time VU Meters (40 Hz)
 
-    private func startMeterTimer() {
+    func startMeterTimer() {
         meterTimer?.invalidate()
         let t = Timer(timeInterval: 1.0 / 40.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickMeters() }
         }
         RunLoop.main.add(t, forMode: .common)
         meterTimer = t
+    }
+
+    func stopMeterTimer() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        levels = [:]
+        masterMeter = Meter()
     }
 
     private func tickMeters() {

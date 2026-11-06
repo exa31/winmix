@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
     var model: MixerModel!
     var statusItem: NSStatusItem?
     var popover: NSPopover?
@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover = NSPopover()
         popover?.contentSize = NSSize(width: 540, height: 360)
         popover?.behavior = .transient
+        popover?.delegate = self
 
         let view = WindowsMixerView(model: model, isStandaloneWindow: false, onDetach: { [weak self] in
             self?.popover?.performClose(nil)
@@ -161,11 +162,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             setupMainWindow()
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
+        updateUIVisibility()
+    }
+
+    func updateUIVisibility() {
+        let isWinVisible = mainWindow?.isVisible == true && !(mainWindow?.isMiniaturized == true)
+        let isPopVisible = popover?.isShown == true
+        model.isUIVisible = isWinVisible || isPopVisible
     }
 
     // Closing the window with 'X' hides it without destroying state (Dock icon/menu bar restores it)
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
+        updateUIVisibility()
         return false
     }
+
+    func windowDidMiniaturize(_ notification: Notification) { updateUIVisibility() }
+    func windowDidDeminiaturize(_ notification: Notification) { updateUIVisibility() }
+    func windowDidBecomeKey(_ notification: Notification) { updateUIVisibility() }
+    func windowDidResignKey(_ notification: Notification) { updateUIVisibility() }
+
+    // NSPopoverDelegate
+    func popoverDidShow(_ notification: Notification) { updateUIVisibility() }
+    func popoverDidClose(_ notification: Notification) { updateUIVisibility() }
 }
