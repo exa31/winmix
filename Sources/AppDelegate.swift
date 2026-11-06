@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var model: MixerModel!
     var statusItem: NSStatusItem?
@@ -38,7 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "slider.vertical.3", accessibilityDescription: "WinMix")
-            button.action = #selector(togglePopover)
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.target = self
         }
 
@@ -51,6 +53,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.showMainWindow()
         })
         popover?.contentViewController = NSHostingController(rootView: view)
+    }
+
+    @objc func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else {
+            togglePopover()
+            return
+        }
+        if event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
+            showContextMenu(sender)
+        } else {
+            togglePopover()
+        }
+    }
+
+    private func showContextMenu(_ sender: NSStatusBarButton) {
+        let menu = NSMenu()
+
+        let openItem = NSMenuItem(title: "Buka WinMix", action: #selector(openMainWindowAction), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let antiDuckItem = NSMenuItem(
+            title: model.isAntiDuckingEnabled ? "✓ 🛡️ Anti-Ducking (Aktif)" : "🛡️ Anti-Ducking (Nonaktif)",
+            action: #selector(toggleAntiDuckAction),
+            keyEquivalent: "d"
+        )
+        antiDuckItem.target = self
+        antiDuckItem.state = model.isAntiDuckingEnabled ? .on : .off
+        menu.addItem(antiDuckItem)
+
+        let themeItem = NSMenuItem(
+            title: model.isClassicTheme ? "Ganti ke Tema Windows 11" : "Ganti ke Tema Classic SndVol",
+            action: #selector(toggleThemeAction),
+            keyEquivalent: "t"
+        )
+        themeItem.target = self
+        menu.addItem(themeItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Keluar dari WinMix", action: #selector(quitAction), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem?.menu = menu
+        sender.performClick(nil)
+        statusItem?.menu = nil
+    }
+
+    @objc func openMainWindowAction() {
+        showMainWindow()
+    }
+
+    @objc func toggleAntiDuckAction() {
+        model.toggleAntiDucking()
+    }
+
+    @objc func toggleThemeAction() {
+        model.isClassicTheme.toggle()
+    }
+
+    @objc func quitAction() {
+        NSApplication.shared.terminate(nil)
     }
 
     @objc func togglePopover() {

@@ -8,6 +8,16 @@ struct WinMixApp: App {
         Settings {
             EmptyView()
         }
+        .commands {
+            CommandMenu("Audio") {
+                Button(action: {
+                    appDelegate.model?.toggleAntiDucking()
+                }) {
+                    Text(appDelegate.model?.isAntiDuckingEnabled == true ? "✓ 🛡️ Anti-Ducking (Aktif)" : "🛡️ Anti-Ducking (Nonaktif)")
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
+        }
     }
 }
 
