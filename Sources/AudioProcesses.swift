@@ -24,6 +24,17 @@ enum AudioProcesses {
     static func isRunningOutput(_ oid: AudioObjectID) -> Bool {
         (HAL.uint32(oid, kAudioProcessPropertyIsRunningOutput) ?? 0) != 0
     }
+
+    /// True when the process has registered active input stream IO (microphone/recording/call).
+    static func isRunningInput(_ oid: AudioObjectID) -> Bool {
+        let sel = AudioObjectPropertySelector(
+            (UInt32(UInt8(ascii: "r")) << 24) |
+            (UInt32(UInt8(ascii: "i")) << 16) |
+            (UInt32(UInt8(ascii: "n")) << 8)  |
+             UInt32(UInt8(ascii: "p"))
+        )
+        return (HAL.uint32(oid, sel) ?? 0) != 0
+    }
 }
 
 /// Human-facing app name and icon resolution.

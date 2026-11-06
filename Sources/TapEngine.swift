@@ -74,7 +74,18 @@ final class TapEngine {
 
     // MARK: - Live Control
 
-    func setGain(_ g: Float, slot: Int)  { rt_set_gain(ctx, Int32(slot), g) }
+    func setGain(_ g: Float, slot: Int) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            if let ch = self.channels.first(where: { $0.slot == slot }) {
+                Persistence.setGain(g, for: ch.identity.bundleID)
+                let eff = self._effectiveGain(for: ch, callActive: self._isCallActive())
+                rt_set_gain(self.ctx, Int32(slot), eff)
+            } else {
+                rt_set_gain(self.ctx, Int32(slot), g)
+            }
+        }
+    }
     func setMute(_ m: Bool, slot: Int)   { rt_set_mute(ctx, Int32(slot), m) }
     func setMasterGain(_ g: Float)       { rt_set_master_gain(ctx, g) }
     func setMasterMute(_ m: Bool)        { rt_set_master_mute(ctx, m) }
@@ -194,10 +205,62 @@ final class TapEngine {
                 }
                 self._writeDuckProperty([0.0, 0.0, 0.0, 0.0], devices: devices)
             }
+            self._updateChannelGains()
         }
     }
 
     // MARK: - Anti-Ducking (Bypass call attenuation)
+
+    private static let callBundleIDs: Set<String> = [
+        "net.whatsapp.WhatsApp",
+        "com.apple.FaceTime",
+        "com.apple.avconferenced",
+        "com.apple.telephonyutilities",
+        "us.zoom.xos",
+        "com.microsoft.teams",
+        "com.microsoft.teams2",
+        "com.skype.skype",
+        "com.discord",
+        "com.hammerandchisel.discord"
+    ]
+
+    private func _isCallChannel(_ ch: EngineChannel) -> Bool {
+        if Self.callBundleIDs.contains(ch.identity.bundleID) { return true }
+        if AudioProcesses.isRunningInput(ch.process.objectID) { return true }
+        return false
+    }
+
+    private func _isCallActive() -> Bool {
+        let all = AudioProcesses.all()
+        for p in all {
+            if let bid = p.bundleID, Self.callBundleIDs.contains(bid) {
+                if AudioProcesses.isRunningOutput(p.objectID) || AudioProcesses.isRunningInput(p.objectID) {
+                    return true
+                }
+            }
+            if AudioProcesses.isRunningInput(p.objectID) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func _effectiveGain(for ch: EngineChannel, callActive: Bool) -> Float {
+        let userGain = Persistence.gain(for: ch.identity.bundleID)
+        if !isAntiDuckingEnabled && callActive && !_isCallChannel(ch) {
+            // Standard macOS ducking: reduce background media to 25% (-12 dB)
+            return userGain * 0.25
+        }
+        return userGain
+    }
+
+    private func _updateChannelGains() {
+        let callActive = _isCallActive()
+        for ch in channels {
+            let eff = _effectiveGain(for: ch, callActive: callActive)
+            rt_set_gain(ctx, Int32(ch.slot), eff)
+        }
+    }
 
     private typealias DuckFn = @convention(c)
         (AudioObjectID, Float32, UnsafePointer<AudioTimeStamp>?, Float32) -> OSStatus
@@ -257,6 +320,7 @@ final class TapEngine {
         if isAntiDuckingEnabled {
             _applyUnduck()
         }
+        _updateChannelGains()
         if !everCreatedTap, let retry = permissionRetryAt, Date() < retry { return }
         let now = Date()
         let excluded = Persistence.excludedBundleIDs
@@ -329,6 +393,7 @@ final class TapEngine {
             if slot >= Int(RT_MAX_SLOTS) { break }
         }
         channels = newChannels
+        _updateChannelGains()
 
         rt_set_master_gain(ctx, Persistence.masterGain)
         rt_set_master_mute(ctx, Persistence.masterMute)
