@@ -127,17 +127,18 @@ struct WindowsAppColumn: View {
                         range: 0.0...1.0,
                         isClassic: isClassic,
                         isMuted: ch.muted,
-                        height: 140
+                        height: 115
                     )
 
                     VerticalVUMeter(
                         level: ch.muted ? 0 : meter.level,
                         peak: ch.muted ? 0 : meter.peak,
                         isClassic: isClassic,
-                        isMuted: ch.muted
+                        isMuted: ch.muted,
+                        height: 115
                     )
                 }
-                .frame(height: 140)
+                .frame(height: 115)
 
                 // Numerical Volume Percent
                 if ch.isDucked {

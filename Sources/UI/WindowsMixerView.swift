@@ -26,12 +26,16 @@ struct WindowsMixerView: View {
                     degradedBanner(reason)
                 }
 
-                mainMixerContent
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    mainMixerContent
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
                 Divider()
                 bottomStatusBar
             }
         }
-        .frame(minWidth: 440, idealWidth: 540, minHeight: 310)
+        .frame(minWidth: 420, idealWidth: 520, minHeight: 270)
         .background(
             isClassic
                 ? Color(nsColor: .windowBackgroundColor)
@@ -175,15 +179,13 @@ struct WindowsMixerView: View {
                 if model.channels.isEmpty {
                     emptyStateView
                 } else {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        HStack(spacing: 10) {
-                            ForEach(model.channels) { ch in
-                                WindowsAppColumn(model: model, id: ch.id)
-                            }
+                    HStack(spacing: 10) {
+                        ForEach(model.channels) { ch in
+                            WindowsAppColumn(model: model, id: ch.id)
                         }
-                        .padding(.vertical, 4)
-                        .padding(.trailing, 14)
                     }
+                    .padding(.vertical, 4)
+                    .padding(.trailing, 14)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

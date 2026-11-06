@@ -78,17 +78,18 @@ struct WindowsDeviceColumn: View {
                     range: 0.0...1.0,
                     isClassic: isClassic,
                     isMuted: model.masterMute,
-                    height: 140
+                    height: 115
                 )
 
                 VerticalVUMeter(
                     level: model.masterMute ? 0 : model.masterMeter.level,
                     peak: model.masterMute ? 0 : model.masterMeter.peak,
                     isClassic: isClassic,
-                    isMuted: model.masterMute
+                    isMuted: model.masterMute,
+                    height: 115
                 )
             }
-            .frame(height: 140)
+            .frame(height: 115)
 
             // Numerical Volume Percent
             Text("\(Int((model.masterGain * 100).rounded()))")

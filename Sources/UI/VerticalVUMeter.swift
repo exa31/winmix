@@ -9,8 +9,8 @@ struct VerticalVUMeter: View {
     var isMuted: Bool = false
 
     private let totalSegments = 16
-    private let height: CGFloat = 140
-    private let width: CGFloat = 8
+    var height: CGFloat = 115
+    var width: CGFloat = 8
 
     private let gradient = LinearGradient(
         colors: [

@@ -75,19 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         openItem.target = self
         menu.addItem(openItem)
 
-        menu.addItem(NSMenuItem.separator())
-
-        let antiDuckItem = NSMenuItem(
-            title: model.isAntiDuckingEnabled
-                ? "✓ 🛡️ Musik Tetap 100% Saat Call (Bypass Ducking)"
-                : "🔉 Musik Mengecil Saat Call (Standar Mac)",
-            action: #selector(toggleAntiDuckAction),
-            keyEquivalent: "d"
-        )
-        antiDuckItem.target = self
-        antiDuckItem.state = model.isAntiDuckingEnabled ? .on : .off
-        menu.addItem(antiDuckItem)
-
         let themeItem = NSMenuItem(
             title: model.isClassicTheme ? "Ganti ke Tema Windows 11" : "Ganti ke Tema Classic SndVol",
             action: #selector(toggleThemeAction),
@@ -142,13 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         UserDefaults.standard.removeObject(forKey: "NSWindow Frame WinMixMainWindow")
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 350),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 320),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.center()
-        window.contentMinSize = NSSize(width: 440, height: 310)
+        window.contentMinSize = NSSize(width: 420, height: 260)
         window.title = "WinMix - Volume Mixer"
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false

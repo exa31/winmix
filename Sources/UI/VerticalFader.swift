@@ -6,7 +6,7 @@ struct VerticalFader: View {
     var range: ClosedRange<Float> = 0.0...1.0
     var isClassic: Bool = false
     var isMuted: Bool = false
-    var height: CGFloat = 140
+    var height: CGFloat = 115
 
     @State private var isDragging: Bool = false
 
