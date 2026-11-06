@@ -15,6 +15,8 @@ final class MixerModel: ObservableObject {
         var outputUID: String?
         var gain: Float
         var muted: Bool
+        var isCallApp: Bool = false
+        var isDucked: Bool = false
     }
 
     struct Meter {
@@ -35,6 +37,8 @@ final class MixerModel: ObservableObject {
     @Published private(set) var outputName: String = "Speakers"
     @Published private(set) var isAutoOutput: Bool = Persistence.isAutoOutputFollowing
     @Published private(set) var outputDevicesList: [OutputDevice] = []
+    @Published private(set) var isCallActive: Bool = false
+    @Published private(set) var activeCallAppName: String? = nil
     @Published var isUIVisible: Bool = true {
         didSet {
             if isUIVisible {
@@ -104,6 +108,8 @@ final class MixerModel: ObservableObject {
     private func apply(_ snap: EngineSnapshot) {
         state = snap.state
         outputName = snap.outputDeviceName
+        isCallActive = snap.isCallActive
+        activeCallAppName = snap.activeCallAppName
         let newChannels = snap.channels.map { ec in
             Channel(id: ec.process.objectID,
                     slot: ec.slot,
@@ -112,7 +118,9 @@ final class MixerModel: ObservableObject {
                     iconPath: ec.identity.iconPath,
                     outputUID: ec.outputUID,
                     gain: Persistence.gain(for: ec.identity.bundleID),
-                    muted: Persistence.mute(for: ec.identity.bundleID))
+                    muted: Persistence.mute(for: ec.identity.bundleID),
+                    isCallApp: ec.isCallApp,
+                    isDucked: ec.isDucked)
         }
         channels = newChannels
         let ids = Set(newChannels.map { $0.id })

@@ -14,7 +14,7 @@ struct WindowsAppColumn: View {
 
             VStack(spacing: 8) {
                 // App Icon & Name
-                VStack(spacing: 4) {
+                VStack(spacing: 3) {
                     Image(nsImage: model.icon(for: ch))
                         .resizable()
                         .interpolation(.high)
@@ -24,12 +24,53 @@ struct WindowsAppColumn: View {
 
                     Text(ch.name)
                         .font(.system(size: 10, weight: .medium))
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(ch.muted ? .secondary : .primary)
-                        .frame(width: 82, height: 26)
+                        .frame(width: 82)
                         .help(ch.name)
+
+                    // Condition Badge: Call App, Ducked, or Protected
+                    if ch.isCallApp {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 7))
+                            Text("CALL")
+                                .font(.system(size: 7.5, weight: .black))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.green.opacity(0.2)))
+                        .foregroundStyle(Color.green)
+                        .help("\(ch.name) terdeteksi sebagai aplikasi panggilan aktif")
+                    } else if ch.isDucked {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "arrow.down.right")
+                                .font(.system(size: 7, weight: .bold))
+                            Text("REDUP 25%")
+                                .font(.system(size: 7, weight: .black))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.orange.opacity(0.2)))
+                        .foregroundStyle(Color.orange)
+                        .help("Volume \(ch.name) otomatis diredupkan ke 25% karena ada panggilan telepon")
+                    } else if model.isCallActive {
+                        HStack(spacing: 2.5) {
+                            Image(systemName: "shield.fill")
+                                .font(.system(size: 7))
+                            Text("100% BYPASS")
+                                .font(.system(size: 7, weight: .black))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.green.opacity(0.12)))
+                        .foregroundStyle(Color.green)
+                        .help("Volume \(ch.name) dipertahankan 100% (Anti-Ducking Aktif)")
+                    }
                 }
+                .frame(height: 54)
 
                 // Per-App Output Device Selector
                 Menu {
@@ -99,15 +140,33 @@ struct WindowsAppColumn: View {
                 .frame(height: 140)
 
                 // Numerical Volume Percent
-                Text("\(Int((ch.gain * 100).rounded()))")
-                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(ch.muted ? .secondary : .primary)
-                    .padding(.horizontal, 6)
+                if ch.isDucked {
+                    HStack(spacing: 2) {
+                        Text("\(Int((ch.gain * 100).rounded()))%")
+                            .strikethrough()
+                            .font(.system(size: 9).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text("25%")
+                            .font(.system(size: 11, weight: .bold).monospacedDigit())
+                            .foregroundStyle(Color.orange)
+                    }
+                    .padding(.horizontal, 4)
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(isClassic ? Color.black.opacity(0.08) : Color.primary.opacity(0.06))
+                            .fill(Color.orange.opacity(0.12))
                     )
+                } else {
+                    Text("\(Int((ch.gain * 100).rounded()))")
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(ch.muted ? .secondary : .primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(isClassic ? Color.black.opacity(0.08) : Color.primary.opacity(0.06))
+                        )
+                }
 
                 // Mute Button
                 Button(action: { model.toggleMute(id: id) }) {

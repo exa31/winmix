@@ -8,6 +8,8 @@ struct EngineChannel: Identifiable {
     let process: AudioProcess
     let identity: AppIdentity
     var outputUID: String?
+    var isCallApp: Bool = false
+    var isDucked: Bool = false
     var id: AudioObjectID { process.objectID }
 }
 
@@ -22,6 +24,8 @@ struct EngineSnapshot {
     let state: EngineState
     let channels: [EngineChannel]
     let outputDeviceName: String
+    let isCallActive: Bool
+    let activeCallAppName: String?
 }
 
 /// Manages process taps + Core Audio private aggregate device + real-time IOProc.
@@ -48,6 +52,8 @@ final class TapEngine {
     private var channels: [EngineChannel] = []
     private var tapsByProcess: [AudioObjectID: (tapID: AudioObjectID, uid: String)] = [:]
     private var lastActive: [AudioObjectID: Date] = [:]
+    private var lastCallActive: Bool = false
+    private var lastCallAppName: String? = nil
 
     private var running = false
     private var everCreatedTap = false
@@ -206,6 +212,7 @@ final class TapEngine {
                 self._writeDuckProperty([0.0, 0.0, 0.0, 0.0], devices: devices)
             }
             self._updateChannelGains()
+            self._notify(state: self.running ? .running : .idle)
         }
     }
 
@@ -213,6 +220,9 @@ final class TapEngine {
 
     private static let callBundleIDs: Set<String> = [
         "net.whatsapp.WhatsApp",
+        "WhatsApp",
+        "com.whatsapp",
+        "net.whatsapp.WhatsApp.desktop",
         "com.apple.FaceTime",
         "com.apple.avconferenced",
         "com.apple.telephonyutilities",
@@ -221,28 +231,59 @@ final class TapEngine {
         "com.microsoft.teams2",
         "com.skype.skype",
         "com.discord",
-        "com.hammerandchisel.discord"
+        "com.hammerandchisel.discord",
+        "com.tinyspeck.slackmacgap",
+        "org.whispersystems.signal-desktop",
+        "ru.keepcoder.Telegram",
+        "com.telegram.desktop",
+        "com.cisco.webexmeetingsapp"
     ]
 
     private func _isCallChannel(_ ch: EngineChannel) -> Bool {
         if Self.callBundleIDs.contains(ch.identity.bundleID) { return true }
+        let lowBid = ch.identity.bundleID.lowercased()
+        let lowName = ch.identity.name.lowercased()
+        if lowBid.contains("whatsapp") || lowBid.contains("facetime") || lowBid.contains("zoom") ||
+           lowBid.contains("teams") || lowBid.contains("discord") || lowBid.contains("skype") ||
+           lowBid.contains("slack") || lowBid.contains("call") ||
+           lowName.contains("whatsapp") || lowName.contains("facetime") || lowName.contains("zoom") ||
+           lowName.contains("teams") || lowName.contains("discord") || lowName.contains("call") {
+            return true
+        }
         if AudioProcesses.isRunningInput(ch.process.objectID) { return true }
         return false
     }
 
     private func _isCallActive() -> Bool {
+        return _activeCallAppName() != nil
+    }
+
+    private func _activeCallAppName() -> String? {
         let all = AudioProcesses.all()
         for p in all {
-            if let bid = p.bundleID, Self.callBundleIDs.contains(bid) {
-                if AudioProcesses.isRunningOutput(p.objectID) || AudioProcesses.isRunningInput(p.objectID) {
-                    return true
+            if let bid = p.bundleID {
+                let lowBid = bid.lowercased()
+                if Self.callBundleIDs.contains(bid) ||
+                    lowBid.contains("whatsapp") ||
+                    lowBid.contains("facetime") ||
+                    lowBid.contains("zoom") ||
+                    lowBid.contains("teams") ||
+                    lowBid.contains("skype") ||
+                    lowBid.contains("discord") ||
+                    lowBid.contains("slack") ||
+                    lowBid.contains("avconferenced") {
+                    if AudioProcesses.isRunningOutput(p.objectID) || AudioProcesses.isRunningInput(p.objectID) {
+                        let id = AppIdentity.resolve(bundleID: p.bundleID, pid: p.pid)
+                        return id.name
+                    }
                 }
             }
             if AudioProcesses.isRunningInput(p.objectID) {
-                return true
+                let id = AppIdentity.resolve(bundleID: p.bundleID, pid: p.pid)
+                return id.name
             }
         }
-        return false
+        return nil
     }
 
     private func _effectiveGain(for ch: EngineChannel, callActive: Bool) -> Float {
@@ -256,9 +297,29 @@ final class TapEngine {
 
     private func _updateChannelGains() {
         let callActive = _isCallActive()
+        let callName = _activeCallAppName()
+        var updated: [EngineChannel] = []
+        var anyChanged = false
+
         for ch in channels {
+            let isCall = _isCallChannel(ch)
+            let isDucked = !isAntiDuckingEnabled && callActive && !isCall
             let eff = _effectiveGain(for: ch, callActive: callActive)
             rt_set_gain(ctx, Int32(ch.slot), eff)
+
+            var newCh = ch
+            if newCh.isCallApp != isCall || newCh.isDucked != isDucked {
+                newCh.isCallApp = isCall
+                newCh.isDucked = isDucked
+                anyChanged = true
+            }
+            updated.append(newCh)
+        }
+        if anyChanged || callActive != lastCallActive || callName != lastCallAppName {
+            lastCallActive = callActive
+            lastCallAppName = callName
+            channels = updated
+            _notify(state: .running)
         }
     }
 
@@ -590,7 +651,13 @@ final class TapEngine {
     }
 
     private func _notify(state: EngineState) {
-        let snapshot = EngineSnapshot(state: state, channels: channels, outputDeviceName: realOutputName)
+        let snapshot = EngineSnapshot(
+            state: state,
+            channels: channels,
+            outputDeviceName: realOutputName,
+            isCallActive: _isCallActive(),
+            activeCallAppName: _activeCallAppName()
+        )
         DispatchQueue.main.async { [weak self] in self?.onUpdate?(snapshot) }
     }
 }

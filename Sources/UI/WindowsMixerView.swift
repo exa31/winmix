@@ -17,6 +17,11 @@ struct WindowsMixerView: View {
             if model.needsPrimer {
                 PrimerView(model: model)
             } else {
+                if model.isCallActive {
+                    callDuckingBanner
+                    Divider()
+                }
+
                 if case .degraded(let reason) = model.state {
                     degradedBanner(reason)
                 }
@@ -26,7 +31,7 @@ struct WindowsMixerView: View {
                 bottomStatusBar
             }
         }
-        .frame(minWidth: 420, idealWidth: 520, minHeight: 330, maxHeight: 380)
+        .frame(minWidth: 440, idealWidth: 540, minHeight: 340, maxHeight: 430)
         .background(
             isClassic
                 ? Color(nsColor: .windowBackgroundColor)
@@ -67,24 +72,45 @@ struct WindowsMixerView: View {
                 }
             }) {
                 HStack(spacing: 5) {
-                    Image(systemName: model.isAntiDuckingEnabled ? "shield.fill" : "speaker.wave.1")
-                        .font(.system(size: 10))
-                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
-                    Text(model.isAntiDuckingEnabled ? "Musik: Tetap 100%" : "Musik: Mengecil (Mac)")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(model.isAntiDuckingEnabled ? .primary : .secondary)
+                    if model.isCallActive {
+                        Image(systemName: model.isAntiDuckingEnabled ? "phone.badge.checkmark" : "phone.down.waves.left.and.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.orange)
+                        Text(model.isAntiDuckingEnabled ? "Telp: Musik 100%" : "Telp: Musik Redup 25%")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(model.isAntiDuckingEnabled ? .primary : Color.orange)
+                    } else {
+                        Image(systemName: model.isAntiDuckingEnabled ? "shield.fill" : "speaker.wave.1")
+                            .font(.system(size: 10))
+                            .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.secondary)
+                        Text(model.isAntiDuckingEnabled ? "Anti-Duck: Tetap 100%" : "Ducking: Normal Mac")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(model.isAntiDuckingEnabled ? .primary : .secondary)
+                    }
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3.5)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(model.isAntiDuckingEnabled ? Color.green.opacity(0.12) : Color.primary.opacity(0.06))
+                        .fill(model.isCallActive
+                            ? (model.isAntiDuckingEnabled ? Color.green.opacity(0.18) : Color.orange.opacity(0.18))
+                            : (model.isAntiDuckingEnabled ? Color.green.opacity(0.12) : Color.primary.opacity(0.06)))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(model.isCallActive
+                            ? (model.isAntiDuckingEnabled ? Color.green.opacity(0.5) : Color.orange.opacity(0.5))
+                            : Color.clear, lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
-            .help(model.isAntiDuckingEnabled
-                ? "Saat Telepon: Volume musik/video TETAP 100% kencang (Bypass Ducking Aktif)"
-                : "Saat Telepon: Volume musik/video OTOMATIS mengecil (Standar Bawaan Mac)")
+            .help(model.isCallActive
+                ? (model.isAntiDuckingEnabled
+                    ? "Panggilan Aktif: Musik/video ditahan 100% kencang (Klik untuk ganti ke Redup 25%)"
+                    : "Panggilan Aktif: Musik/video diredupkan ke 25% (Klik untuk ganti ke Tetap 100%)")
+                : (model.isAntiDuckingEnabled
+                    ? "Mode Standby: Saat ada telepon nanti, musik TIDAK AKAN mengecil (Bypass Ducking Aktif)"
+                    : "Mode Standby: Saat ada telepon nanti, musik AKAN mengecil otomatis (Standar macOS)"))
 
             // Theme Switcher Button
             Button(action: {
@@ -196,6 +222,77 @@ struct WindowsMixerView: View {
         .padding(.vertical, 20)
     }
 
+    // MARK: - Call Ducking Live Banner
+
+    private var callDuckingBanner: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(model.isAntiDuckingEnabled ? Color.green.opacity(0.18) : Color.orange.opacity(0.18))
+                    .frame(width: 26, height: 26)
+                Image(systemName: "phone.badge.waveform.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("PANGGILAN AKTIF")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.orange)
+
+                    if let app = model.activeCallAppName {
+                        Text("•  \(app)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.primary)
+                    }
+                }
+
+                Text(model.isAntiDuckingEnabled
+                    ? "🛡️ Mode Anti-Duck: Musik dipertahankan kencang 100% (Bypass macOS)"
+                    : "🔉 Mode Ducking: Musik otomatis diredupkan ke 25% agar suara telepon jelas")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    model.toggleAntiDucking()
+                }
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: model.isAntiDuckingEnabled ? "arrow.down.right" : "shield.fill")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(model.isAntiDuckingEnabled ? "Ubah ke Redup (25%)" : "Bypass (Tetap 100%)")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(model.isAntiDuckingEnabled ? Color.orange.opacity(0.15) : Color.green.opacity(0.15))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(model.isAntiDuckingEnabled ? Color.orange.opacity(0.4) : Color.green.opacity(0.4), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .help(model.isAntiDuckingEnabled
+                ? "Klik untuk meredupkan musik saat panggilan ini (25%)"
+                : "Klik untuk memulihkan musik tetap 100% kencang")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(
+            model.isAntiDuckingEnabled
+                ? Color.green.opacity(0.08)
+                : Color.orange.opacity(0.08)
+        )
+    }
+
     // MARK: - Bottom Status Bar
 
     private var bottomStatusBar: some View {
@@ -208,6 +305,21 @@ struct WindowsMixerView: View {
                 Text(model.state == .running ? "Siap / Ready" : "Memulai / Starting...")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
+            }
+
+            if model.isCallActive {
+                Text("•")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(model.isAntiDuckingEnabled ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text("Call: \(model.isAntiDuckingEnabled ? "Musik 100%" : "Musik Redup 25%")")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(model.isAntiDuckingEnabled ? Color.green : Color.orange)
+                }
             }
 
             Spacer()
