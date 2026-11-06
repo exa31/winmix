@@ -78,6 +78,15 @@ enum HAL {
         scalar(system, kAudioHardwarePropertyDefaultOutputDevice, default: AudioObjectID(0))
     }
 
+    static func defaultInputDevice() -> AudioObjectID? {
+        scalar(system, kAudioHardwarePropertyDefaultInputDevice, default: AudioObjectID(0))
+    }
+
+    static func isInputDeviceRunning() -> Bool {
+        guard let inDev = defaultInputDevice(), inDev != 0 else { return false }
+        return (uint32(inDev, kAudioDevicePropertyDeviceIsRunning) ?? 0) != 0
+    }
+
     static func isPhysicalOutput(_ dev: AudioObjectID) -> Bool {
         var transport: UInt32 = 0
         var tSize = UInt32(MemoryLayout<UInt32>.size)

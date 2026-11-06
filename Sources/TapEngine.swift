@@ -54,6 +54,7 @@ final class TapEngine {
     private var lastActive: [AudioObjectID: Date] = [:]
     private var lastCallActive: Bool = false
     private var lastCallAppName: String? = nil
+    private var isTestingDucking: Bool = false
 
     private var running = false
     private var everCreatedTap = false
@@ -254,11 +255,23 @@ final class TapEngine {
         return false
     }
 
+    func setTestingDucking(_ active: Bool) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.isTestingDucking = active
+            self._updateChannelGains()
+            self._notify(state: self.running ? .running : .idle)
+        }
+    }
+
     private func _isCallActive() -> Bool {
+        if isTestingDucking { return true }
+        if HAL.isInputDeviceRunning() { return true }
         return _activeCallAppName() != nil
     }
 
     private func _activeCallAppName() -> String? {
+        if isTestingDucking { return "Simulasi Call" }
         let all = AudioProcesses.all()
         for p in all {
             if let bid = p.bundleID {
@@ -282,6 +295,9 @@ final class TapEngine {
                 let id = AppIdentity.resolve(bundleID: p.bundleID, pid: p.pid)
                 return id.name
             }
+        }
+        if HAL.isInputDeviceRunning() {
+            return "Microphone / Call"
         }
         return nil
     }

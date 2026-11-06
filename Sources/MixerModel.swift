@@ -39,6 +39,11 @@ final class MixerModel: ObservableObject {
     @Published private(set) var outputDevicesList: [OutputDevice] = []
     @Published private(set) var isCallActive: Bool = false
     @Published private(set) var activeCallAppName: String? = nil
+    @Published var isTestingDucking: Bool = false {
+        didSet {
+            engine.setTestingDucking(isTestingDucking)
+        }
+    }
     @Published var isUIVisible: Bool = true {
         didSet {
             if isUIVisible {
@@ -87,6 +92,10 @@ final class MixerModel: ObservableObject {
 
     func toggleAntiDucking() {
         isAntiDuckingEnabled.toggle()
+    }
+
+    func toggleTestDucking() {
+        isTestingDucking.toggle()
     }
 
     var needsPrimer: Bool {
