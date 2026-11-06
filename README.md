@@ -33,12 +33,15 @@
 
 Unduh rilis terbaru langsung dari [GitHub Releases](https://github.com/exa31/winmix/releases/latest):
 
-- 📀 **[WinMix-v1.0.0.dmg](https://github.com/exa31/winmix/releases/download/v1.0.0/WinMix-v1.0.0.dmg)** (Rekomendasi): Buka file `.dmg`, lalu tarik icon **WinMix** ke folder **Applications**.
-- 🗜️ **[WinMix-v1.0.0.zip](https://github.com/exa31/winmix/releases/download/v1.0.0/WinMix-v1.0.0.zip)** (Portable): Ekstrak file `.zip` dan letakkan `WinMix.app` di `/Applications`.
+- 📀 **[WinMix-v1.1.0.dmg](https://github.com/exa31/winmix/releases/download/v1.1.0/WinMix-v1.1.0.dmg)** (Rekomendasi): Buka file `.dmg`, lalu tarik icon **WinMix** ke folder **Applications**.
+- 🗜️ **[WinMix-v1.1.0.zip](https://github.com/exa31/winmix/releases/download/v1.1.0/WinMix-v1.1.0.zip)** (Portable): Ekstrak file `.zip` dan letakkan `WinMix.app` di `/Applications`.
 
 ---
 
-## 📋 Persyaratan Sistem
+## ✨ Fitur Utama
+
+- 🛡️ **Anti-Ducking (Bypass Call Attenuation)**: Mencegah WhatsApp, FaceTime, Zoom, atau Google Meet mengecilkan (*ducking*) volume Spotify, YouTube, atau game secara otomatis saat panggilan suara/video aktif. Dilengkapi tombol toggle `[🛡️ Anti-Duck: ON/OFF]`.
+- 🎛️ **Per-App Volume Control (0% – 100%)**: Atur volume masing-masing aplikasi
 
 - **Sistem Operasi**: macOS 14.4 (Sonoma) atau lebih baru (termasuk macOS 15+ Sequoia / macOS 27).
 - **Arsitektur**: Apple Silicon (M1/M2/M3/M4) atau Intel Mac dengan Command Line Tools (`swiftc`, `clang`).
