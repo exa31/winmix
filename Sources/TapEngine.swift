@@ -1,4 +1,5 @@
 import CoreAudio
+import AudioToolbox
 import Foundation
 import os
 
@@ -62,11 +63,14 @@ final class TapEngine {
     private var activityToken: NSObjectProtocol?
     private var outputListener: ListenerToken?
     private var devicesListener: ListenerToken?
+    private var hardwareVolumeListener: ListenerToken?
+    private var hardwareMuteListener: ListenerToken?
     private var pollTimer: DispatchSourceTimer?
 
     private let hysteresis: TimeInterval = 30.0
 
     var onUpdate: ((EngineSnapshot) -> Void)?
+    var onHardwareVolumeChange: ((Float, Bool) -> Void)?
 
     init() {
         guard let c = rt_context_create() else {
@@ -74,6 +78,8 @@ final class TapEngine {
         }
         ctx = c
         ioQueue = DispatchQueue(label: "io.github.winmix.io", qos: .userInteractive)
+        // Recover Apple Process Tap -6 dB downmix attenuation (2.0x = +6 dB)
+        rt_set_preamp_gain(ctx, 2.0)
     }
 
     deinit {
@@ -95,8 +101,33 @@ final class TapEngine {
         }
     }
     func setMute(_ m: Bool, slot: Int)   { rt_set_mute(ctx, Int32(slot), m) }
-    func setMasterGain(_ g: Float)       { rt_set_master_gain(ctx, g) }
-    func setMasterMute(_ m: Bool)        { rt_set_master_mute(ctx, m) }
+
+    func setMasterGain(_ g: Float) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            Persistence.masterGain = g
+            if self.realOutputDevice != 0 && HAL.isDeviceVolumeSettable(self.realOutputDevice) {
+                HAL.setDeviceVolume(self.realOutputDevice, volume: g)
+                // When hardware volume is settable, DAC handles master attenuation.
+                // Keep buffer 0 at unity (1.0) so audio is NOT double-attenuated!
+                rt_set_buffer_gain(self.ctx, 0, 1.0)
+            } else {
+                rt_set_buffer_gain(self.ctx, 0, g)
+            }
+        }
+    }
+
+    func setMasterMute(_ m: Bool) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            Persistence.masterMute = m
+            if self.realOutputDevice != 0 && HAL.setDeviceMuteState(self.realOutputDevice, muted: m) {
+                rt_set_buffer_mute(self.ctx, 0, false)
+            } else {
+                rt_set_buffer_mute(self.ctx, 0, m)
+            }
+        }
+    }
     func peaks(slot: Int) -> (Float, Float) {
         (rt_get_peak_l(ctx, Int32(slot)), rt_get_peak_r(ctx, Int32(slot)))
     }
@@ -155,6 +186,43 @@ final class TapEngine {
                 realOutputDevice = dev
                 realOutputUID = uid
                 realOutputName = HAL.deviceName(dev) ?? "Speakers"
+            }
+        }
+        _bindHardwareVolumeListeners(to: realOutputDevice)
+    }
+
+    private func _bindHardwareVolumeListeners(to device: AudioObjectID) {
+        if let tok = hardwareVolumeListener { HAL.removeListener(tok); hardwareVolumeListener = nil }
+        if let tok = hardwareMuteListener { HAL.removeListener(tok); hardwareMuteListener = nil }
+        guard device != 0 else { return }
+
+        hardwareVolumeListener = HAL.addListener(
+            device,
+            kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            scope: kAudioDevicePropertyScopeOutput,
+            queue: engineQueue
+        ) { [weak self] in
+            self?._handleHardwareVolumeChanged()
+        }
+
+        hardwareMuteListener = HAL.addListener(
+            device,
+            kAudioDevicePropertyMute,
+            scope: kAudioDevicePropertyScopeOutput,
+            queue: engineQueue
+        ) { [weak self] in
+            self?._handleHardwareVolumeChanged()
+        }
+    }
+
+    private func _handleHardwareVolumeChanged() {
+        guard realOutputDevice != 0 else { return }
+        if let vol = HAL.deviceVolume(realOutputDevice) {
+            let mute = HAL.deviceMuteState(realOutputDevice) ?? false
+            Persistence.masterGain = vol
+            Persistence.masterMute = mute
+            DispatchQueue.main.async { [weak self] in
+                self?.onHardwareVolumeChange?(vol, mute)
             }
         }
     }
@@ -225,12 +293,20 @@ final class TapEngine {
         engineQueue.async { [weak self] in
             guard let self = self else { return }
             Persistence.setDeviceGain(g, for: uid)
-            if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
-                rt_set_buffer_gain(self.ctx, Int32(idx), g)
-            }
             if uid == self.realOutputUID {
-                Persistence.masterGain = g
-                rt_set_buffer_gain(self.ctx, 0, g)
+                self.setMasterGain(g)
+                return
+            }
+            if let devObj = HAL.outputDevices().first(where: { HAL.deviceUID($0) == uid }),
+               HAL.isDeviceVolumeSettable(devObj) {
+                HAL.setDeviceVolume(devObj, volume: g)
+                if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                    rt_set_buffer_gain(self.ctx, Int32(idx), 1.0)
+                }
+            } else {
+                if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                    rt_set_buffer_gain(self.ctx, Int32(idx), g)
+                }
             }
         }
     }
@@ -239,12 +315,19 @@ final class TapEngine {
         engineQueue.async { [weak self] in
             guard let self = self else { return }
             Persistence.setDeviceMute(m, for: uid)
-            if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
-                rt_set_buffer_mute(self.ctx, Int32(idx), m)
-            }
             if uid == self.realOutputUID {
-                Persistence.masterMute = m
-                rt_set_buffer_mute(self.ctx, 0, m)
+                self.setMasterMute(m)
+                return
+            }
+            if let devObj = HAL.outputDevices().first(where: { HAL.deviceUID($0) == uid }),
+               HAL.setDeviceMuteState(devObj, muted: m) {
+                if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                    rt_set_buffer_mute(self.ctx, Int32(idx), false)
+                }
+            } else {
+                if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                    rt_set_buffer_mute(self.ctx, Int32(idx), m)
+                }
             }
         }
     }
@@ -557,6 +640,7 @@ final class TapEngine {
         channels = newChannels
         _updateChannelGains()
 
+        rt_set_preamp_gain(ctx, 2.0)
         rt_set_master_gain(ctx, Persistence.masterGain)
         rt_set_master_mute(ctx, Persistence.masterMute)
 
@@ -658,9 +742,24 @@ final class TapEngine {
             if idx == 0 {
                 g = Persistence.masterGain
                 m = Persistence.masterMute
+                if realOutputDevice != 0 && HAL.isDeviceVolumeSettable(realOutputDevice) {
+                    rt_set_buffer_gain(ctx, 0, 1.0)
+                    rt_set_buffer_mute(ctx, 0, false)
+                    HAL.setDeviceVolume(realOutputDevice, volume: g)
+                    HAL.setDeviceMuteState(realOutputDevice, muted: m)
+                    continue
+                }
             } else {
                 g = Persistence.deviceGain(for: uid)
                 m = Persistence.deviceMute(for: uid)
+                if let devObj = HAL.outputDevices().first(where: { HAL.deviceUID($0) == uid }),
+                   HAL.isDeviceVolumeSettable(devObj) {
+                    rt_set_buffer_gain(ctx, Int32(idx), 1.0)
+                    rt_set_buffer_mute(ctx, Int32(idx), false)
+                    HAL.setDeviceVolume(devObj, volume: g)
+                    HAL.setDeviceMuteState(devObj, muted: m)
+                    continue
+                }
             }
             rt_set_buffer_gain(ctx, Int32(idx), g)
             rt_set_buffer_mute(ctx, Int32(idx), m)
@@ -749,6 +848,8 @@ final class TapEngine {
         pollTimer?.cancel(); pollTimer = nil
         if let l = outputListener { HAL.removeListener(l); outputListener = nil }
         if let dl = devicesListener { HAL.removeListener(dl); devicesListener = nil }
+        if let vl = hardwareVolumeListener { HAL.removeListener(vl); hardwareVolumeListener = nil }
+        if let ml = hardwareMuteListener { HAL.removeListener(ml); hardwareMuteListener = nil }
         _teardownIO()
         for (_, tap) in tapsByProcess { AudioHardwareDestroyProcessTap(tap.tapID) }
         tapsByProcess.removeAll()

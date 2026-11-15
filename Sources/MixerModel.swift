@@ -73,8 +73,19 @@ final class MixerModel: ObservableObject {
     private var devicesListener: ListenerToken?
 
     init() {
-        masterGain = Persistence.masterGain
-        masterMute = Persistence.masterMute
+        let initialGain: Float
+        let initialMute: Bool
+        if let dev = HAL.defaultOutputDevice(), let hwVol = HAL.deviceVolume(dev) {
+            initialGain = hwVol
+            initialMute = HAL.deviceMuteState(dev) ?? Persistence.masterMute
+            Persistence.masterGain = hwVol
+            Persistence.masterMute = initialMute
+        } else {
+            initialGain = Persistence.masterGain
+            initialMute = Persistence.masterMute
+        }
+        masterGain = initialGain
+        masterMute = initialMute
         isClassicTheme = Persistence.isWindowsClassicTheme
         isAntiDuckingEnabled = Persistence.isAntiDuckingEnabled
         hasAttempted = UserDefaults.standard.bool(forKey: "wvm.hasAttempted")
@@ -83,6 +94,15 @@ final class MixerModel: ObservableObject {
         devicesListener = HAL.addListener(HAL.system, kAudioHardwarePropertyDevices, queue: .main) { [weak self] in
             Task { @MainActor in
                 self?.refreshOutputDevices()
+            }
+        }
+
+        engine.onHardwareVolumeChange = { [weak self] vol, mute in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.masterGain = vol
+                self.masterMute = mute
+                self.objectWillChange.send()
             }
         }
 
@@ -239,6 +259,9 @@ final class MixerModel: ObservableObject {
         if dev.name == outputName {
             return masterGain
         }
+        if let hwVol = HAL.deviceVolume(dev.id) {
+            return hwVol
+        }
         return Persistence.deviceGain(for: dev.uid)
     }
 
@@ -246,6 +269,9 @@ final class MixerModel: ObservableObject {
         guard let dev = currentControlledDevice() else { return masterMute }
         if dev.name == outputName {
             return masterMute
+        }
+        if let hwMute = HAL.deviceMuteState(dev.id) {
+            return hwMute
         }
         return Persistence.deviceMute(for: dev.uid)
     }

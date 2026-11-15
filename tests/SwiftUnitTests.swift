@@ -24,6 +24,7 @@ struct SwiftUnitTests {
         testPersistence()
         testAppIdentity()
         testDBScale()
+        testHardwareVolume()
 
         print("\nRESULT: \(failures == 0 ? "ALL SWIFT TESTS PASSED" : "FAILED") (\(failures) failure(s))\n")
         if failures > 0 {
@@ -145,6 +146,31 @@ struct SwiftUnitTests {
         guard peak > 0.0001 else { return 0 }
         let db = 20 * log10f(min(peak, 1.5))
         return max(0, min(1, 1 + db / 50))
+    }
+
+    static func testHardwareVolume() {
+        print("\n-- Testing Hardware Volume & Mute Integration --")
+
+        if let dev = HAL.defaultOutputDevice(), dev != 0 {
+            let settable = HAL.isDeviceVolumeSettable(dev)
+            print("  Default output device ID: \(dev), settable: \(settable)")
+            if let vol = HAL.deviceVolume(dev) {
+                assertTest(vol >= 0.0 && vol <= 1.0, "Hardware volume is within valid range [0.0, 1.0] (\(vol))")
+
+                let ok = HAL.setDeviceVolume(dev, volume: vol)
+                assertTest(ok, "HAL.setDeviceVolume succeeds on default output device")
+            } else {
+                print("  Default output device has no VirtualMainVolume (skipped)")
+            }
+
+            if let mute = HAL.deviceMuteState(dev) {
+                print("  Current device mute state: \(mute)")
+                let ok = HAL.setDeviceMuteState(dev, muted: mute)
+                assertTest(ok, "HAL.setDeviceMuteState preserves mute without error")
+            }
+        } else {
+            print("  No default output device available in test environment")
+        }
     }
 }
 

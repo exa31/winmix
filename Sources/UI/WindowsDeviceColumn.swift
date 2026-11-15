@@ -106,7 +106,7 @@ struct WindowsDeviceColumn: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
-            .help(model.isAutoOutput ? "Output: Otomatis mengikuti sistem (\(model.currentDeviceName()))" : "Output: \(model.currentDeviceName())")
+            .help(model.isAutoOutput ? "Output: Otomatis mengikuti sistem (\(model.currentDeviceName())) • Sinkron dengan F11/F12" : "Output: \(model.currentDeviceName()) • Sinkron dengan F11/F12")
 
             Spacer().frame(height: 4)
 

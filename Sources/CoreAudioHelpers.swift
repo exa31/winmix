@@ -1,4 +1,5 @@
 import CoreAudio
+import AudioToolbox
 import Foundation
 import os
 
@@ -149,6 +150,57 @@ enum HAL {
         return withUnsafePointer(to: &listPtr.pointee.mBuffers) { bufPtr in
             (0..<count).map { Int(bufPtr[$0].mNumberChannels) }
         }
+    }
+
+    // MARK: Hardware Volume & Mute
+
+    static func isDeviceVolumeSettable(_ dev: AudioObjectID) -> Bool {
+        guard dev != 0 else { return false }
+        var addr = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
+        guard has(dev, addr) else { return false }
+        var settable: DarwinBoolean = false
+        let st = AudioObjectIsPropertySettable(dev, &addr, &settable)
+        return st == noErr && settable.boolValue
+    }
+
+    static func deviceVolume(_ dev: AudioObjectID) -> Float? {
+        guard dev != 0 else { return nil }
+        var addr = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
+        guard has(dev, addr) else { return nil }
+        var vol: Float32 = 0
+        var size = UInt32(MemoryLayout<Float32>.size)
+        let st = AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &vol)
+        return st == noErr ? Float(vol) : nil
+    }
+
+    @discardableResult
+    static func setDeviceVolume(_ dev: AudioObjectID, volume: Float) -> Bool {
+        guard dev != 0 else { return false }
+        var addr = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)
+        guard has(dev, addr) else { return false }
+        var vol = Float32(max(0.0, min(1.0, volume)))
+        let size = UInt32(MemoryLayout<Float32>.size)
+        return AudioObjectSetPropertyData(dev, &addr, 0, nil, size, &vol) == noErr
+    }
+
+    static func deviceMuteState(_ dev: AudioObjectID) -> Bool? {
+        guard dev != 0 else { return nil }
+        var addr = address(kAudioDevicePropertyMute, scope: kAudioDevicePropertyScopeOutput)
+        guard has(dev, addr) else { return nil }
+        var mute: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        let st = AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &mute)
+        return st == noErr ? (mute != 0) : nil
+    }
+
+    @discardableResult
+    static func setDeviceMuteState(_ dev: AudioObjectID, muted: Bool) -> Bool {
+        guard dev != 0 else { return false }
+        var addr = address(kAudioDevicePropertyMute, scope: kAudioDevicePropertyScopeOutput)
+        guard has(dev, addr) else { return false }
+        var mute: UInt32 = muted ? 1 : 0
+        let size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectSetPropertyData(dev, &addr, 0, nil, size, &mute) == noErr
     }
 
     // MARK: Property listeners

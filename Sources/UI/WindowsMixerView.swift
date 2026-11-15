@@ -8,6 +8,7 @@ struct WindowsMixerView: View {
     var onDetach: (() -> Void)? = nil
 
     var isClassic: Bool { model.isClassicTheme }
+    @State private var keyMonitor: Any? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +42,38 @@ struct WindowsMixerView: View {
                 ? Color(nsColor: .windowBackgroundColor)
                 : Color(nsColor: .underPageBackgroundColor).opacity(0.85)
         )
+        .onAppear {
+            let m = self.model
+            if keyMonitor == nil {
+                keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak m] event in
+                    guard let model = m else { return event }
+                    // Arrow Up (126) or Plus / Equals
+                    if event.keyCode == 126 || event.characters == "+" || event.characters == "=" {
+                        let cur = model.currentDeviceGain()
+                        model.setControlledDeviceGain(min(1.0, cur + 0.0625))
+                        return nil
+                    }
+                    // Arrow Down (125) or Minus
+                    if event.keyCode == 125 || event.characters == "-" {
+                        let cur = model.currentDeviceGain()
+                        model.setControlledDeviceGain(max(0.0, cur - 0.0625))
+                        return nil
+                    }
+                    // 'm' for mute toggle
+                    if event.characters?.lowercased() == "m" && event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                        model.toggleControlledDeviceMute()
+                        return nil
+                    }
+                    return event
+                }
+            }
+        }
+        .onDisappear {
+            if let mon = keyMonitor {
+                NSEvent.removeMonitor(mon)
+                keyMonitor = nil
+            }
+        }
     }
 
     // MARK: - Header Bar
