@@ -15,12 +15,53 @@ struct WindowsDeviceColumn: View {
                 .foregroundStyle(isClassic ? .primary : MixerTheme.win11Blue)
                 .frame(maxWidth: .infinity, alignment: .center)
 
+            // If multiple devices are actively in use, show quick switcher tabs
+            let inUse = model.activeInUseDevices()
+            if inUse.count > 1 {
+                HStack(spacing: 3) {
+                    ForEach(inUse) { dev in
+                        let isSelected = (model.focusedDeviceUID == dev.uid) || (model.focusedDeviceUID == nil && dev.name == model.outputName)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if dev.name == model.outputName {
+                                    model.focusDevice(uid: nil)
+                                } else {
+                                    model.focusDevice(uid: dev.uid)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: iconForDeviceName(dev.name))
+                                .font(.system(size: 9))
+                                .foregroundStyle(isSelected ? (isClassic ? .primary : MixerTheme.win11Blue) : .secondary)
+                                .frame(width: 22, height: 18)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(isSelected ? (isClassic ? Color.black.opacity(0.12) : MixerTheme.win11Blue.opacity(0.18)) : Color.clear)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Kontrol volume untuk \(dev.name)")
+                    }
+                }
+            }
+
             // Device Icon & Dropdown
             Menu {
+                if !model.isFocusedDeviceMaster(), let dev = model.currentControlledDevice() {
+                    Button {
+                        model.selectOutput(dev.id)
+                        model.focusDevice(uid: nil)
+                    } label: {
+                        Label("★ Jadikan Output Sistem", systemImage: "star.fill")
+                    }
+                    Divider()
+                }
+
                 Button {
+                    model.focusDevice(uid: nil)
                     model.selectOutputAuto()
                 } label: {
-                    if model.isAutoOutput {
+                    if model.isAutoOutput && model.isFocusedDeviceMaster() {
                         Label("Auto: Ikuti Sistem (\(model.outputName))", systemImage: "checkmark")
                     } else {
                         Text("Auto: Ikuti Sistem")
@@ -32,8 +73,9 @@ struct WindowsDeviceColumn: View {
                 ForEach(model.outputDevices()) { dev in
                     Button {
                         model.selectOutput(dev.id)
+                        model.focusDevice(uid: nil)
                     } label: {
-                        if !model.isAutoOutput && dev.name == model.outputName {
+                        if !model.isAutoOutput && dev.name == model.outputName && model.isFocusedDeviceMaster() {
                             Label(dev.name, systemImage: "checkmark")
                         } else {
                             Text(dev.name)
@@ -42,18 +84,18 @@ struct WindowsDeviceColumn: View {
                 }
             } label: {
                 VStack(spacing: 4) {
-                    Image(systemName: deviceIconName)
+                    Image(systemName: iconForDeviceName(model.currentDeviceName()))
                         .font(.system(size: 24))
-                        .foregroundStyle(model.masterMute ? .secondary : (isClassic ? .primary : MixerTheme.win11Blue))
+                        .foregroundStyle(model.currentDeviceMute() ? .secondary : (isClassic ? .primary : MixerTheme.win11Blue))
                         .frame(width: 32, height: 32)
 
                     HStack(spacing: 2) {
-                        if model.isAutoOutput {
+                        if model.isAutoOutput && model.isFocusedDeviceMaster() {
                             Image(systemName: "sparkles")
                                 .font(.system(size: 8))
                                 .foregroundStyle(isClassic ? Color.accentColor : MixerTheme.win11Blue)
                         }
-                        Text(model.outputName)
+                        Text(model.currentDeviceName())
                             .font(.system(size: 10, weight: .medium))
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
@@ -64,7 +106,7 @@ struct WindowsDeviceColumn: View {
                 .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
-            .help(model.isAutoOutput ? "Output: Otomatis mengikuti sistem (\(model.outputName))" : "Output manual: \(model.outputName)")
+            .help(model.isAutoOutput ? "Output: Otomatis mengikuti sistem (\(model.currentDeviceName()))" : "Output: \(model.currentDeviceName())")
 
             Spacer().frame(height: 4)
 
@@ -72,29 +114,29 @@ struct WindowsDeviceColumn: View {
             HStack(alignment: .bottom, spacing: 6) {
                 VerticalFader(
                     value: Binding(
-                        get: { model.masterGain },
-                        set: { model.setMasterGain($0) }
+                        get: { model.currentDeviceGain() },
+                        set: { model.setControlledDeviceGain($0) }
                     ),
                     range: 0.0...1.0,
                     isClassic: isClassic,
-                    isMuted: model.masterMute,
+                    isMuted: model.currentDeviceMute(),
                     height: 115
                 )
 
                 VerticalVUMeter(
-                    level: model.masterMute ? 0 : model.masterMeter.level,
-                    peak: model.masterMute ? 0 : model.masterMeter.peak,
+                    level: model.currentDeviceMute() ? 0 : model.masterMeter.level,
+                    peak: model.currentDeviceMute() ? 0 : model.masterMeter.peak,
                     isClassic: isClassic,
-                    isMuted: model.masterMute,
+                    isMuted: model.currentDeviceMute(),
                     height: 115
                 )
             }
             .frame(height: 115)
 
             // Numerical Volume Percent
-            Text("\(Int((model.masterGain * 100).rounded()))")
+            Text("\(Int((model.currentDeviceGain() * 100).rounded()))")
                 .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                .foregroundStyle(model.masterMute ? .secondary : .primary)
+                .foregroundStyle(model.currentDeviceMute() ? .secondary : .primary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
@@ -103,18 +145,18 @@ struct WindowsDeviceColumn: View {
                 )
 
             // Mute Button
-            Button(action: { model.toggleMasterMute() }) {
-                Image(systemName: model.masterMute ? "speaker.slash.fill" : "speaker.wave.3.fill")
+            Button(action: { model.toggleControlledDeviceMute() }) {
+                Image(systemName: model.currentDeviceMute() ? "speaker.slash.fill" : "speaker.wave.3.fill")
                     .font(.system(size: 14))
-                    .foregroundStyle(model.masterMute ? MixerTheme.win11MutedRed : .primary)
+                    .foregroundStyle(model.currentDeviceMute() ? MixerTheme.win11MutedRed : .primary)
                     .frame(width: 28, height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(model.masterMute ? Color.red.opacity(0.12) : Color.clear)
+                            .fill(model.currentDeviceMute() ? Color.red.opacity(0.12) : Color.clear)
                     )
             }
             .buttonStyle(.plain)
-            .help(model.masterMute ? "Unmute Master" : "Mute Master")
+            .help(model.currentDeviceMute() ? "Unmute \(model.currentDeviceName())" : "Mute \(model.currentDeviceName())")
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 8)
@@ -129,8 +171,8 @@ struct WindowsDeviceColumn: View {
         )
     }
 
-    private var deviceIconName: String {
-        let name = model.outputName.lowercased()
+    private func iconForDeviceName(_ rawName: String) -> String {
+        let name = rawName.lowercased()
         if name.contains("airpod") {
             return "airpodspro"
         } else if name.contains("headphone") || name.contains("headset") {
@@ -140,6 +182,10 @@ struct WindowsDeviceColumn: View {
         } else {
             return "speaker.wave.2.fill"
         }
+    }
+
+    private var deviceIconName: String {
+        iconForDeviceName(model.outputName)
     }
 }
 

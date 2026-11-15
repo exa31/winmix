@@ -7,6 +7,61 @@ enum Persistence {
     private static func gainKey(_ b: String) -> String { "wvm.gain.\(b)" }
     private static func muteKey(_ b: String) -> String { "wvm.mute.\(b)" }
     private static func outputKey(_ b: String) -> String { "wvm.out.\(b)" }
+    private static func devGainKey(_ u: String) -> String { "wvm.dev.gain.\(u)" }
+    private static func devMuteKey(_ u: String) -> String { "wvm.dev.mute.\(u)" }
+
+    static func deviceGain(for uid: String) -> Float {
+        if let v = d.object(forKey: devGainKey(uid)) as? Double {
+            return min(1.0, max(0.0, Float(v)))
+        }
+        return 1.0
+    }
+
+    static func setDeviceGain(_ g: Float, for uid: String) {
+        let clamped = min(1.0, max(0.0, g))
+        d.set(Double(clamped), forKey: devGainKey(uid))
+    }
+
+    static func deviceMute(for uid: String) -> Bool {
+        d.bool(forKey: devMuteKey(uid))
+    }
+
+    static func setDeviceMute(_ m: Bool, for uid: String) {
+        d.set(m, forKey: devMuteKey(uid))
+    }
+
+    static func purgeDisconnectedDevice(_ deadUID: String) {
+        if manualOutputUID == deadUID {
+            manualOutputUID = nil
+            isAutoOutputFollowing = true
+        }
+        let dict = d.dictionaryRepresentation()
+        for key in dict.keys where key.hasPrefix("wvm.out.") {
+            if let val = dict[key] as? String, val == deadUID {
+                d.removeObject(forKey: key)
+            }
+        }
+        d.removeObject(forKey: devGainKey(deadUID))
+        d.removeObject(forKey: devMuteKey(deadUID))
+    }
+
+    @discardableResult
+    static func cleanOrphanedOutputs(validUIDs: Set<String>) -> [String] {
+        var cleaned: [String] = []
+        if let man = manualOutputUID, !validUIDs.contains(man) {
+            manualOutputUID = nil
+            isAutoOutputFollowing = true
+        }
+        let dict = d.dictionaryRepresentation()
+        for key in dict.keys where key.hasPrefix("wvm.out.") {
+            if let val = dict[key] as? String, !validUIDs.contains(val) {
+                d.removeObject(forKey: key)
+                let bundle = String(key.dropFirst("wvm.out.".count))
+                cleaned.append(bundle)
+            }
+        }
+        return cleaned
+    }
 
     static func gain(for bundleID: String) -> Float {
         if let v = d.object(forKey: gainKey(bundleID)) as? Double {

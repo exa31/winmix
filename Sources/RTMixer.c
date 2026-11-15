@@ -9,6 +9,8 @@ struct RTContext {
   _Atomic bool mute[RT_MAX_SLOTS];
   _Atomic float masterGain;
   _Atomic bool masterMute;
+  _Atomic float bufferGain[RT_MAX_OUT_BUFFERS];
+  _Atomic bool bufferMute[RT_MAX_OUT_BUFFERS];
   _Atomic float preampGain;
   /* audio -> control */
   _Atomic float peakL[RT_MAX_SLOTS];
@@ -50,6 +52,10 @@ static void rt_init(RTContext *ctx) {
     ctx->channelOffset[i] = 0;
     ctx->channels[i] = 0;
   }
+  for (int i = 0; i < RT_MAX_OUT_BUFFERS; i++) {
+    atomic_store_explicit(&ctx->bufferGain[i], 1.0f, memory_order_relaxed);
+    atomic_store_explicit(&ctx->bufferMute[i], false, memory_order_relaxed);
+  }
   ctx->tapCount = 0;
   atomic_store_explicit(&ctx->masterGain, 1.0f, memory_order_relaxed);
   atomic_store_explicit(&ctx->masterMute, false, memory_order_relaxed);
@@ -83,16 +89,54 @@ void rt_set_mute(RTContext *ctx, int slot, bool mute) {
   }
 }
 
+static inline int rt_buffer_ok(int bufferIndex) {
+  return bufferIndex >= 0 && bufferIndex < RT_MAX_OUT_BUFFERS;
+}
+
 void rt_set_master_gain(RTContext *ctx, float gain) {
   if (ctx) {
     atomic_store_explicit(&ctx->masterGain, gain, memory_order_relaxed);
+    atomic_store_explicit(&ctx->bufferGain[0], gain, memory_order_relaxed);
   }
 }
 
 void rt_set_master_mute(RTContext *ctx, bool mute) {
   if (ctx) {
     atomic_store_explicit(&ctx->masterMute, mute, memory_order_relaxed);
+    atomic_store_explicit(&ctx->bufferMute[0], mute, memory_order_relaxed);
   }
+}
+
+void rt_set_buffer_gain(RTContext *ctx, int bufferIndex, float gain) {
+  if (ctx && rt_buffer_ok(bufferIndex)) {
+    atomic_store_explicit(&ctx->bufferGain[bufferIndex], gain, memory_order_relaxed);
+    if (bufferIndex == 0) {
+      atomic_store_explicit(&ctx->masterGain, gain, memory_order_relaxed);
+    }
+  }
+}
+
+void rt_set_buffer_mute(RTContext *ctx, int bufferIndex, bool mute) {
+  if (ctx && rt_buffer_ok(bufferIndex)) {
+    atomic_store_explicit(&ctx->bufferMute[bufferIndex], mute, memory_order_relaxed);
+    if (bufferIndex == 0) {
+      atomic_store_explicit(&ctx->masterMute, mute, memory_order_relaxed);
+    }
+  }
+}
+
+float rt_get_buffer_gain(RTContext *ctx, int bufferIndex) {
+  if (ctx && rt_buffer_ok(bufferIndex)) {
+    return atomic_load_explicit(&ctx->bufferGain[bufferIndex], memory_order_relaxed);
+  }
+  return 1.0f;
+}
+
+bool rt_get_buffer_mute(RTContext *ctx, int bufferIndex) {
+  if (ctx && rt_buffer_ok(bufferIndex)) {
+    return atomic_load_explicit(&ctx->bufferMute[bufferIndex], memory_order_relaxed);
+  }
+  return false;
 }
 
 void rt_set_preamp_gain(RTContext *ctx, float gain) {
@@ -217,8 +261,17 @@ void rt_mix_process(RTContext *ctx, const AudioBufferList *in,
     if (atomic_load_explicit(&ctx->mute[t], memory_order_relaxed)) {
       g = 0.0f;
     }
+    float devGain = 1.0f;
+    if (obi >= 0 && obi < RT_MAX_OUT_BUFFERS) {
+      devGain = atomic_load_explicit(&ctx->bufferGain[obi], memory_order_relaxed);
+      if (atomic_load_explicit(&ctx->bufferMute[obi], memory_order_relaxed)) {
+        devGain = 0.0f;
+      }
+    } else {
+      devGain = mg;
+    }
     float effPreamp = atomic_load_explicit(&ctx->preampGain, memory_order_relaxed);
-    float eff = g * mg * effPreamp;
+    float eff = g * devGain * effPreamp;
 
     float peakL = 0.0f, peakR = 0.0f;
 

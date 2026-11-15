@@ -37,6 +37,7 @@ final class MixerModel: ObservableObject {
     @Published private(set) var outputName: String = "Speakers"
     @Published private(set) var isAutoOutput: Bool = Persistence.isAutoOutputFollowing
     @Published private(set) var outputDevicesList: [OutputDevice] = []
+    @Published var focusedDeviceUID: String? = nil
     @Published private(set) var isCallActive: Bool = false
     @Published private(set) var activeCallAppName: String? = nil
     @Published var isTestingDucking: Bool = false {
@@ -189,6 +190,116 @@ final class MixerModel: ObservableObject {
         if devs != outputDevicesList {
             outputDevicesList = devs
         }
+
+        let validUIDs = Set(devs.map { $0.uid })
+        if let fUID = focusedDeviceUID, !validUIDs.contains(fUID) {
+            focusedDeviceUID = nil
+        }
+
+        // Clean up any channels whose outputUID is no longer in valid physical devices
+        var channelModified = false
+        for i in 0..<channels.count {
+            if let uid = channels[i].outputUID, !validUIDs.contains(uid) {
+                channels[i].outputUID = nil
+                Persistence.setAppOutputUID(nil, for: channels[i].bundleID)
+                channelModified = true
+            }
+        }
+        if channelModified {
+            objectWillChange.send()
+        }
+    }
+
+    func focusDevice(uid: String?) {
+        focusedDeviceUID = uid
+        objectWillChange.send()
+    }
+
+    func currentControlledDevice() -> OutputDevice? {
+        if let fUID = focusedDeviceUID, let match = outputDevicesList.first(where: { $0.uid == fUID }) {
+            return match
+        }
+        if let match = outputDevicesList.first(where: { $0.name == outputName }) {
+            return match
+        }
+        return outputDevicesList.first
+    }
+
+    func currentDeviceName() -> String {
+        currentControlledDevice()?.name ?? outputName
+    }
+
+    func isFocusedDeviceMaster() -> Bool {
+        guard let dev = currentControlledDevice() else { return true }
+        return dev.name == outputName
+    }
+
+    func currentDeviceGain() -> Float {
+        guard let dev = currentControlledDevice() else { return masterGain }
+        if dev.name == outputName {
+            return masterGain
+        }
+        return Persistence.deviceGain(for: dev.uid)
+    }
+
+    func currentDeviceMute() -> Bool {
+        guard let dev = currentControlledDevice() else { return masterMute }
+        if dev.name == outputName {
+            return masterMute
+        }
+        return Persistence.deviceMute(for: dev.uid)
+    }
+
+    func setControlledDeviceGain(_ g: Float) {
+        guard let dev = currentControlledDevice() else {
+            setMasterGain(g)
+            return
+        }
+        if dev.name == outputName {
+            setMasterGain(g)
+        } else {
+            engine.setDeviceGain(g, uid: dev.uid)
+            objectWillChange.send()
+        }
+    }
+
+    func toggleControlledDeviceMute() {
+        guard let dev = currentControlledDevice() else {
+            toggleMasterMute()
+            return
+        }
+        if dev.name == outputName {
+            toggleMasterMute()
+        } else {
+            let current = Persistence.deviceMute(for: dev.uid)
+            engine.setDeviceMute(!current, uid: dev.uid)
+            objectWillChange.send()
+        }
+    }
+
+    func activeInUseDevices() -> [OutputDevice] {
+        var result: [OutputDevice] = []
+        var seenUIDs = Set<String>()
+
+        // 1. Master output device
+        if let mainMatch = outputDevicesList.first(where: { $0.name == outputName }) {
+            result.append(mainMatch)
+            seenUIDs.insert(mainMatch.uid)
+        } else if let first = outputDevicesList.first {
+            result.append(first)
+            seenUIDs.insert(first.uid)
+        }
+
+        // 2. Secondary devices assigned to an active channel
+        for ch in channels {
+            if let uid = ch.outputUID, !seenUIDs.contains(uid) {
+                if let dev = outputDevicesList.first(where: { $0.uid == uid }) {
+                    result.append(dev)
+                    seenUIDs.insert(uid)
+                }
+            }
+        }
+        return result
     }
 
     func selectOutputAuto() {

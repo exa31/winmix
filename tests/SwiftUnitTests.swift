@@ -77,6 +77,33 @@ struct SwiftUnitTests {
         // Excluded bundle IDs should contain self
         let excluded = Persistence.excludedBundleIDs
         assertTest(excluded.contains("com.antigravity.WindowsVolumeMixer"), "Excluded bundle IDs contains our mixer bundle ID")
+
+        // Device gain & mute persistence
+        let testDevUID = "test-device-\(UUID().uuidString)"
+        assertTest(approx(Persistence.deviceGain(for: testDevUID), 1.0), "Default device gain is 1.0 (100%)")
+        assertTest(Persistence.deviceMute(for: testDevUID) == false, "Default device mute is false")
+
+        Persistence.setDeviceGain(0.65, for: testDevUID)
+        assertTest(approx(Persistence.deviceGain(for: testDevUID), 0.65), "Device gain persists correctly (0.65)")
+
+        Persistence.setDeviceMute(true, for: testDevUID)
+        assertTest(Persistence.deviceMute(for: testDevUID) == true, "Device mute persists correctly (true)")
+
+        // App custom output UID persistence
+        Persistence.setAppOutputUID(testDevUID, for: testBundle)
+        assertTest(Persistence.appOutputUID(for: testBundle) == testDevUID, "App output UID persists correctly")
+
+        // Purge disconnected device
+        Persistence.purgeDisconnectedDevice(testDevUID)
+        assertTest(approx(Persistence.deviceGain(for: testDevUID), 1.0), "Purged device gain resets to default 1.0")
+        assertTest(Persistence.deviceMute(for: testDevUID) == false, "Purged device mute resets to default false")
+
+        // Clean orphaned outputs
+        Persistence.setAppOutputUID("dead-device-uid", for: testBundle)
+        assertTest(Persistence.appOutputUID(for: testBundle) == "dead-device-uid", "Orphaned UID assigned")
+        let cleaned = Persistence.cleanOrphanedOutputs(validUIDs: ["valid-dev-1", "valid-dev-2"])
+        assertTest(cleaned.contains(testBundle), "cleanOrphanedOutputs returned orphaned bundle ID")
+        assertTest(Persistence.appOutputUID(for: testBundle) == nil, "Orphaned app output UID reset to nil")
     }
 
     static func testAppIdentity() {

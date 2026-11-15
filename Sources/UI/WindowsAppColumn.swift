@@ -72,48 +72,88 @@ struct WindowsAppColumn: View {
                 }
                 .frame(height: 54)
 
-                // Per-App Output Device Selector
-                Menu {
-                    Button {
-                        model.setAppOutput(uid: nil, id: id)
-                    } label: {
-                        if ch.outputUID == nil {
-                            Label("Default (\(model.outputName))", systemImage: "checkmark")
-                        } else {
-                            Text("Default (\(model.outputName))")
+                // Per-App Output Device Selector & Shortcut
+                HStack(spacing: 3) {
+                    Menu {
+                        // Quick actions for custom output device
+                        if let customUID = ch.outputUID, let dev = model.outputDevices().first(where: { $0.uid == customUID }) {
+                            Button {
+                                model.selectOutput(dev.id)
+                            } label: {
+                                Label("★ Jadikan Output Sistem", systemImage: "star.fill")
+                            }
+
+                            Button {
+                                model.focusDevice(uid: dev.uid)
+                            } label: {
+                                Label("🔊 Atur di Kolom Device", systemImage: "slider.vertical.3")
+                            }
+
+                            Divider()
                         }
-                    }
 
-                    Divider()
-
-                    ForEach(model.outputDevices()) { dev in
                         Button {
-                            model.setAppOutput(uid: dev.uid, id: id)
+                            model.setAppOutput(uid: nil, id: id)
                         } label: {
-                            if ch.outputUID == dev.uid {
-                                Label(dev.name, systemImage: "checkmark")
+                            if ch.outputUID == nil {
+                                Label("Default (\(model.outputName))", systemImage: "checkmark")
                             } else {
-                                Text(dev.name)
+                                Text("Default (\(model.outputName))")
                             }
                         }
+
+                        Divider()
+
+                        ForEach(model.outputDevices()) { dev in
+                            Button {
+                                model.setAppOutput(uid: dev.uid, id: id)
+                            } label: {
+                                if ch.outputUID == dev.uid {
+                                    Label(dev.name, systemImage: "checkmark")
+                                } else {
+                                    Text(dev.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: appOutputIcon(ch.outputUID))
+                                .font(.system(size: 8))
+                            Text(appOutputTitle(ch.outputUID))
+                                .font(.system(size: 8.5, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(ch.outputUID == nil ? Color.primary.opacity(0.06) : (isClassic ? Color.black.opacity(0.12) : MixerTheme.win11Blue.opacity(0.15)))
+                        )
+                        .foregroundStyle(ch.outputUID == nil ? .primary : (isClassic ? .primary : MixerTheme.win11Blue))
                     }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: appOutputIcon(ch.outputUID))
-                            .font(.system(size: 8))
-                        Text(appOutputTitle(ch.outputUID))
-                            .font(.system(size: 8.5, weight: .medium))
-                            .lineLimit(1)
+                    .menuStyle(.borderlessButton)
+                    .frame(maxWidth: ch.outputUID != nil ? 64 : 82)
+                    .help("Pilih output suara untuk \(ch.name)")
+
+                    // 1-Click Shortcut to focus Device Column on this custom output device!
+                    if let customUID = ch.outputUID {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                model.focusDevice(uid: customUID)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 7.5, weight: .bold))
+                                .foregroundStyle(isClassic ? .primary : MixerTheme.win11Blue)
+                                .frame(width: 16, height: 16)
+                                .background(
+                                    Circle().fill(isClassic ? Color.black.opacity(0.08) : MixerTheme.win11Blue.opacity(0.12))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Atur master volume untuk speaker/headphone ini di kolom Device")
                     }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(Color.primary.opacity(0.06))
-                    )
                 }
-                .menuStyle(.borderlessButton)
                 .frame(maxWidth: 82)
-                .help("Pilih output suara untuk \(ch.name)")
 
                 Spacer().frame(height: 2)
 

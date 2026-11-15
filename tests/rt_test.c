@@ -175,6 +175,48 @@ int main(void) {
   CHECK(approx(rt_get_peak_l(ctx, 0), 1.6f), "Preamp 2.0x scales peak meter accurately (0.8 * 2.0 = 1.6)");
   rt_set_preamp_gain(ctx, 1.0f);
 
+  /* Test 7c: Multi-buffer output routing with per-buffer gain and mute */
+  float outbuf2[1024];
+  ABL8 outMulti;
+  memset(&outMulti, 0, sizeof(outMulti));
+  outMulti.mNumberBuffers = 2;
+  outMulti.mBuffers[0].mNumberChannels = 2;
+  outMulti.mBuffers[0].mDataByteSize = frames * 2 * sizeof(float);
+  outMulti.mBuffers[0].mData = outbuf;
+  outMulti.mBuffers[1].mNumberChannels = 2;
+  outMulti.mBuffers[1].mDataByteSize = frames * 2 * sizeof(float);
+  outMulti.mBuffers[1].mData = outbuf2;
+
+  // Route tap0 to output buffer 0 (primary/internal), tap1 to output buffer 1 (custom/external)
+  rt_set_out_buffer(ctx, 0, 0);
+  rt_set_out_buffer(ctx, 1, 1);
+  rt_set_gain(ctx, 0, 1.0f);
+  rt_set_gain(ctx, 1, 1.0f);
+  rt_set_buffer_gain(ctx, 0, 1.0f);
+  rt_set_buffer_gain(ctx, 1, 0.5f); // 50% on secondary device
+
+  memset(outbuf, 0, sizeof(outbuf));
+  memset(outbuf2, 0, sizeof(outbuf2));
+  rt_mix_process(ctx, (AudioBufferList *)&in, (AudioBufferList *)&outMulti);
+
+  // tap0 (0.8) * app_gain(1.0) * buffer0_gain(1.0) = 0.8 in buffer 0
+  // tap1 (0.4) * app_gain(1.0) * buffer1_gain(0.5) = 0.2 in buffer 1
+  CHECK(approx(outbuf[0], 0.8f), "Buffer 0 receives tap0 at full buffer gain (0.8)");
+  CHECK(approx(outbuf2[0], 0.2f), "Buffer 1 receives tap1 scaled by per-buffer gain (0.4 * 0.5 = 0.2)");
+
+  // Muting buffer 1 silences buffer 1 while buffer 0 continues unaffected
+  rt_set_buffer_mute(ctx, 1, true);
+  memset(outbuf, 0, sizeof(outbuf));
+  memset(outbuf2, 0, sizeof(outbuf2));
+  rt_mix_process(ctx, (AudioBufferList *)&in, (AudioBufferList *)&outMulti);
+  CHECK(approx(outbuf[0], 0.8f), "Buffer 0 continues playing cleanly when buffer 1 is muted");
+  CHECK(approx(outbuf2[0], 0.0f), "Buffer 1 is completely silenced when buffer 1 is muted");
+
+  // Restore buffer 1 unmuted and reset tap routing
+  rt_set_buffer_mute(ctx, 1, false);
+  rt_set_buffer_gain(ctx, 1, 1.0f);
+  rt_set_out_buffer(ctx, 1, 0);
+
   /* Test 8: Real-time safety (ZERO heap allocations over 500,000 audio IO
    * cycles) */
   printf("\nTesting Real-Time Safety over 500,000 IO cycles...\n");

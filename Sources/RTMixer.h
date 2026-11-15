@@ -6,6 +6,7 @@
 #include <CoreAudio/CoreAudioTypes.h>
 
 #define RT_MAX_SLOTS 64
+#define RT_MAX_OUT_BUFFERS 16
 
 typedef struct RTContext RTContext;
 
@@ -18,6 +19,10 @@ void  rt_set_gain(RTContext *ctx, int slot, float gain);
 void  rt_set_mute(RTContext *ctx, int slot, bool mute);
 void  rt_set_master_gain(RTContext *ctx, float gain);
 void  rt_set_master_mute(RTContext *ctx, bool mute);
+void  rt_set_buffer_gain(RTContext *ctx, int bufferIndex, float gain);
+void  rt_set_buffer_mute(RTContext *ctx, int bufferIndex, bool mute);
+float rt_get_buffer_gain(RTContext *ctx, int bufferIndex);
+bool  rt_get_buffer_mute(RTContext *ctx, int bufferIndex);
 void  rt_set_preamp_gain(RTContext *ctx, float gain);
 float rt_get_preamp_gain(RTContext *ctx);
 

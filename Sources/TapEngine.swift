@@ -61,6 +61,7 @@ final class TapEngine {
     private var permissionRetryAt: Date?
     private var activityToken: NSObjectProtocol?
     private var outputListener: ListenerToken?
+    private var devicesListener: ListenerToken?
     private var pollTimer: DispatchSourceTimer?
 
     private let hysteresis: TimeInterval = 30.0
@@ -123,6 +124,10 @@ final class TapEngine {
             self?._handleDefaultOutputChanged()
         }
 
+        devicesListener = HAL.addListener(HAL.system, kAudioHardwarePropertyDevices, queue: engineQueue) { [weak self] in
+            self?._handleDevicesChanged()
+        }
+
         let t = DispatchSource.makeTimerSource(queue: engineQueue)
         t.schedule(deadline: .now() + 0.2, repeating: 0.4)
         t.setEventHandler { [weak self] in self?._refresh() }
@@ -162,6 +167,86 @@ final class TapEngine {
         log.info("Audio output changed to \(self.realOutputName, privacy: .public)")
         let desired = channels.map { $0.process }
         _rebuildGraph(desired: desired)
+    }
+
+    private func _handleDevicesChanged() {
+        let validDevs = HAL.outputDevices()
+        let validUIDs = Set(validDevs.compactMap { HAL.deviceUID($0) })
+
+        Persistence.cleanOrphanedOutputs(validUIDs: validUIDs)
+
+        var needRebuild = false
+
+        // 1. Check if master output device was disconnected
+        if !validUIDs.contains(realOutputUID) {
+            log.notice("Master output \(self.realOutputUID) disconnected, reverting to default")
+            isAutoOutput = true
+            manualOutputUID = nil
+            Persistence.isAutoOutputFollowing = true
+            Persistence.manualOutputUID = nil
+            _updateRealOutput()
+            needRebuild = true
+        }
+
+        // 2. Check active channels for disconnected custom outputUID
+        var anyChannelChanged = false
+        var updatedChannels: [EngineChannel] = []
+        for ch in channels {
+            var newCh = ch
+            if let targetUID = ch.outputUID, !validUIDs.contains(targetUID) {
+                log.notice("Custom output \(targetUID) for \(ch.identity.name) disconnected, falling back to Default")
+                newCh.outputUID = nil
+                Persistence.setAppOutputUID(nil, for: ch.identity.bundleID)
+                anyChannelChanged = true
+                needRebuild = true
+            }
+            updatedChannels.append(newCh)
+        }
+
+        if anyChannelChanged {
+            channels = updatedChannels
+        }
+
+        // 3. Check if activeOutputUIDs has any disconnected subdevices
+        let activeSet = Set(activeOutputUIDs)
+        if !activeSet.isSubset(of: validUIDs) {
+            needRebuild = true
+        }
+
+        if needRebuild {
+            let desired = channels.map { $0.process }
+            _rebuildGraph(desired: desired)
+        } else {
+            _notify(state: running ? .running : .idle)
+        }
+    }
+
+    func setDeviceGain(_ g: Float, uid: String) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            Persistence.setDeviceGain(g, for: uid)
+            if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                rt_set_buffer_gain(self.ctx, Int32(idx), g)
+            }
+            if uid == self.realOutputUID {
+                Persistence.masterGain = g
+                rt_set_buffer_gain(self.ctx, 0, g)
+            }
+        }
+    }
+
+    func setDeviceMute(_ m: Bool, uid: String) {
+        engineQueue.async { [weak self] in
+            guard let self = self else { return }
+            Persistence.setDeviceMute(m, for: uid)
+            if let idx = self.activeOutputUIDs.firstIndex(of: uid) {
+                rt_set_buffer_mute(self.ctx, Int32(idx), m)
+            }
+            if uid == self.realOutputUID {
+                Persistence.masterMute = m
+                rt_set_buffer_mute(self.ctx, 0, m)
+            }
+        }
     }
 
     func setAutoOutput() {
@@ -566,6 +651,21 @@ final class TapEngine {
         let aggTapList = HAL.aggregateTapUIDs(aggregateID)
         let bufferChannels = HAL.streamChannels(aggregateID, scope: kAudioObjectPropertyScopeInput)
 
+        // Apply per-buffer output gains and mutes for all active output subdevices
+        for (idx, uid) in activeOutputUIDs.enumerated() {
+            let g: Float
+            let m: Bool
+            if idx == 0 {
+                g = Persistence.masterGain
+                m = Persistence.masterMute
+            } else {
+                g = Persistence.deviceGain(for: uid)
+                m = Persistence.deviceMute(for: uid)
+            }
+            rt_set_buffer_gain(ctx, Int32(idx), g)
+            rt_set_buffer_mute(ctx, Int32(idx), m)
+        }
+
         for ch in channels {
             guard let tap = tapsByProcess[ch.process.objectID] else {
                 rt_set_routing(ctx, Int32(ch.slot), -1, 0, 0)
@@ -648,6 +748,7 @@ final class TapEngine {
     private func _teardownAll() {
         pollTimer?.cancel(); pollTimer = nil
         if let l = outputListener { HAL.removeListener(l); outputListener = nil }
+        if let dl = devicesListener { HAL.removeListener(dl); devicesListener = nil }
         _teardownIO()
         for (_, tap) in tapsByProcess { AudioHardwareDestroyProcessTap(tap.tapID) }
         tapsByProcess.removeAll()
