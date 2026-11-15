@@ -256,24 +256,69 @@ final class MixerModel: ObservableObject {
 
     func currentDeviceGain() -> Float {
         guard let dev = currentControlledDevice() else { return masterGain }
-        if dev.name == outputName {
-            return masterGain
-        }
-        if let hwVol = HAL.deviceVolume(dev.id) {
-            return hwVol
-        }
-        return Persistence.deviceGain(for: dev.uid)
+        return gain(for: dev)
     }
 
     func currentDeviceMute() -> Bool {
         guard let dev = currentControlledDevice() else { return masterMute }
-        if dev.name == outputName {
+        return mute(for: dev)
+    }
+
+    func gain(for device: OutputDevice) -> Float {
+        if device.name == outputName {
+            return masterGain
+        }
+        if let hwVol = HAL.deviceVolume(device.id) {
+            return hwVol
+        }
+        return Persistence.deviceGain(for: device.uid)
+    }
+
+    func mute(for device: OutputDevice) -> Bool {
+        if device.name == outputName {
             return masterMute
         }
-        if let hwMute = HAL.deviceMuteState(dev.id) {
+        if let hwMute = HAL.deviceMuteState(device.id) {
             return hwMute
         }
-        return Persistence.deviceMute(for: dev.uid)
+        return Persistence.deviceMute(for: device.uid)
+    }
+
+    func setGain(_ g: Float, for device: OutputDevice) {
+        if device.name == outputName {
+            setMasterGain(g)
+        } else {
+            engine.setDeviceGain(g, uid: device.uid)
+            objectWillChange.send()
+        }
+    }
+
+    func toggleMute(for device: OutputDevice) {
+        if device.name == outputName {
+            toggleMasterMute()
+        } else {
+            let current = mute(for: device)
+            engine.setDeviceMute(!current, uid: device.uid)
+            objectWillChange.send()
+        }
+    }
+
+    func meter(for device: OutputDevice) -> (level: Float, peak: Float) {
+        if device.name == outputName {
+            return (masterMute ? 0 : masterMeter.level, masterMute ? 0 : masterMeter.peak)
+        }
+        let isMuted = mute(for: device)
+        if isMuted { return (0, 0) }
+        var maxLevel: Float = 0
+        var maxPeak: Float = 0
+        for ch in channels where ch.outputUID == device.uid {
+            if let m = levels[ch.id] {
+                maxLevel = max(maxLevel, m.level)
+                maxPeak = max(maxPeak, m.peak)
+            }
+        }
+        let g = gain(for: device)
+        return (maxLevel * g, maxPeak * g)
     }
 
     func setControlledDeviceGain(_ g: Float) {
@@ -281,12 +326,7 @@ final class MixerModel: ObservableObject {
             setMasterGain(g)
             return
         }
-        if dev.name == outputName {
-            setMasterGain(g)
-        } else {
-            engine.setDeviceGain(g, uid: dev.uid)
-            objectWillChange.send()
-        }
+        setGain(g, for: dev)
     }
 
     func toggleControlledDeviceMute() {
@@ -294,13 +334,7 @@ final class MixerModel: ObservableObject {
             toggleMasterMute()
             return
         }
-        if dev.name == outputName {
-            toggleMasterMute()
-        } else {
-            let current = Persistence.deviceMute(for: dev.uid)
-            engine.setDeviceMute(!current, uid: dev.uid)
-            objectWillChange.send()
-        }
+        toggleMute(for: dev)
     }
 
     func activeInUseDevices() -> [OutputDevice] {

@@ -191,7 +191,6 @@ struct WindowsMixerView: View {
             // Master Device Column (Left)
             WindowsDeviceColumn(model: model)
                 .padding(.leading, 12)
-                .padding(.vertical, 10)
 
             // Vertical Divider
             VStack(spacing: 0) {
